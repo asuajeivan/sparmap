@@ -1,0 +1,16 @@
+# Configuración del negocio — Generado por AgentKit
+negocio:
+  nombre: "[NOMBRE DEL NEGOCIO]"
+  descripcion: "[DESCRIPCIÓN DETALLADA]"
+  horario: "[HORARIO]"
+
+agente:
+  nombre: "[NOMBRE DEL AGENTE]"
+  tono: "[TONO ELEGIDO]"
+  casos_de_uso:
+    - "[CASO 1]"
+    - "[CASO 2]"
+
+metadata:
+  creado: "[FECHA]"
+  version: "1.0"
