@@ -4,6 +4,10 @@ import asyncio
 import sys
 import os
 
+# Forzar UTF-8 en la salida de la terminal (Windows cp1252 no soporta emojis)
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+sys.stdin.reconfigure(encoding="utf-8")
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dotenv import load_dotenv

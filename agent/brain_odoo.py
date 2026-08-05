@@ -60,7 +60,7 @@ Cuando usar cada herramienta:
 REGLAS:
 - SIEMPRE usa buscar_producto o obtener_catalogo ANTES de responder sobre disponibilidad. NUNCA digas que no tienes acceso al inventario.
 - Muestra SOLO los productos donde disponible=true. Ignora los que tienen disponible=false.
-- Los precios estan en dolares (USD). Muestra el precio con formato $X.XX
+- Los precios en Odoo estan en dolares (USD). SIEMPRE muestra el precio con formato $X.XX (dolares). NUNCA uses Bs ni bolivares.
 - NUNCA digas cuantas unidades hay en stock. Solo di "disponible" o "no disponible".
 - Si el producto no aparece en la busqueda, di que no lo tienes registrado y da el numero 0412-0402832.
 - Cuando envies el catalogo, organiza por categoria, solo nombre y precio en USD.
@@ -138,7 +138,7 @@ async def _llamar_claude(
     for iteracion in range(max_iteraciones):
         kwargs = {
             "model": "claude-haiku-4-5-20251001",
-            "max_tokens": 1024,
+            "max_tokens": 4096,
             "system": system_prompt,
             "messages": mensajes_actuales,
         }
