@@ -1,16 +1,39 @@
-# Configuración del negocio — Generado por AgentKit
+# Configuracion del negocio — SPARMAP, C.A.
 negocio:
-  nombre: "[NOMBRE DEL NEGOCIO]"
-  descripcion: "[DESCRIPCIÓN DETALLADA]"
-  horario: "[HORARIO]"
+  nombre: "SPARMAP, C.A."
+  descripcion: "Empresa de suministros electricos y proyectos de ingenieria en Venezuela. Venta de materiales electricos de baja, media y alta tension, servicios tecnicos e instalaciones electricas."
+  direccion: "Local 05, C.C Rosita, entre Av 39 y 40, C. 31, Acarigua 3301, Portuguesa"
+  telefono_humano: "0412-0402832"
+  email: "Sparmap.llanos@gmail.com"
+  horario_tienda:
+    lunes: "8:00 a.m. - 5:00 p.m."
+    martes: "8:00 a.m. - 5:00 p.m."
+    miercoles: "8:00 a.m. - 5:00 p.m."
+    jueves: "8:00 a.m. - 5:00 p.m."
+    viernes: "8:00 a.m. - 5:00 p.m."
+    sabado: "8:00 a.m. - 12:00 p.m."
+    domingo: "Cerrado"
+  servicios:
+    - "Venta de materiales electricos (baja, media y alta tension)"
+    - "Proyectos de ingenieria electrica"
+    - "Diseno de circuitos e iluminacion"
+    - "Instalaciones electricas llave en mano"
+    - "Reparacion de cortocircuitos"
+    - "Compensacion reactiva y bancos de capacitores"
+    - "Mantenimiento preventivo industrial"
+    - "Estudios de calidad de energia"
+    - "Despachos a nivel nacional"
 
 agente:
-  nombre: "[NOMBRE DEL AGENTE]"
-  tono: "[TONO ELEGIDO]"
+  nombre: null
+  tono: "neutral, directo y servicial"
+  disponibilidad: "24/7"
   casos_de_uso:
-    - "[CASO 1]"
-    - "[CASO 2]"
+    - "Consultar disponibilidad de productos en inventario"
+    - "Enviar catalogo de productos disponibles"
+    - "Informar direccion y horario de la tienda fisica"
+    - "Derivar a un humano cuando se requiera atencion personalizada"
 
 metadata:
-  creado: "[FECHA]"
+  creado: "2026-08-04"
   version: "1.0"

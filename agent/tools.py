@@ -1,63 +1,70 @@
-# agent/tools.py — Herramientas del agente
-# Generado por AgentKit
-
-"""
-Herramientas específicas del negocio.
-Estas funciones extienden las capacidades del agente más allá de responder texto.
-Claude Code genera las funciones según los casos de uso elegidos en la entrevista.
-"""
+# agent/tools.py — Herramientas del agente SPARMAP
 
 import os
 import yaml
 import logging
-from datetime import datetime
 
 logger = logging.getLogger("agentkit")
 
 
-def cargar_info_negocio() -> dict:
-    """Carga la información del negocio desde business.yaml."""
+def cargar_inventario() -> dict:
+    """Carga el inventario desde knowledge/inventario.yaml."""
     try:
-        with open("config/business.yaml", "r", encoding="utf-8") as f:
-            return yaml.safe_load(f)
+        with open("knowledge/inventario.yaml", "r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
     except FileNotFoundError:
-        logger.error("config/business.yaml no encontrado")
+        logger.error("knowledge/inventario.yaml no encontrado")
         return {}
 
 
-def obtener_horario() -> dict:
-    """Retorna el horario de atención del negocio."""
-    info = cargar_info_negocio()
+def buscar_producto(consulta: str) -> str:
+    """Busca un producto en el inventario por nombre."""
+    data = cargar_inventario()
+    categorias = data.get("categorias", {})
+    consulta_lower = consulta.lower()
+    encontrados = []
+
+    for categoria, productos in categorias.items():
+        for p in productos:
+            if consulta_lower in p.get("nombre", "").lower():
+                estado = "Disponible" if p.get("disponible") else "No disponible"
+                desc = f" — {p['descripcion']}" if p.get("descripcion") else ""
+                encontrados.append(f"{p['nombre']}{desc} [{estado}]")
+
+    if encontrados:
+        return "\n".join(encontrados)
+    return "No encontre ese producto en el inventario."
+
+
+def obtener_catalogo() -> str:
+    """Retorna el catalogo completo de productos disponibles."""
+    data = cargar_inventario()
+    categorias = data.get("categorias", {})
+    lineas = []
+
+    for categoria, productos in categorias.items():
+        nombre_cat = categoria.replace("_", " ").title()
+        disponibles = [p for p in productos if p.get("disponible", False)]
+        if not disponibles:
+            continue
+        lineas.append(f"\n*{nombre_cat}*")
+        for p in disponibles:
+            lineas.append(f"  - {p['nombre']}")
+
+    if lineas:
+        return "Productos disponibles:" + "\n".join(lineas)
+    return "No hay productos disponibles en este momento."
+
+
+def obtener_info_tienda() -> dict:
+    """Retorna la informacion de contacto y ubicacion."""
     return {
-        "horario": info.get("negocio", {}).get("horario", "No disponible"),
-        "esta_abierto": True,  # TODO: calcular según hora actual y horario
+        "direccion": "Local 05, C.C Rosita, entre Av 39 y 40, C. 31, Acarigua 3301, Portuguesa",
+        "telefono": "0412-0402832",
+        "email": "Sparmap.llanos@gmail.com",
+        "horario": {
+            "lunes_viernes": "8:00 a.m. - 5:00 p.m.",
+            "sabado": "8:00 a.m. - 12:00 p.m.",
+            "domingo": "Cerrado"
+        }
     }
-
-
-def buscar_en_knowledge(consulta: str) -> str:
-    """
-    Busca información relevante en los archivos de /knowledge.
-    Retorna el contenido más relevante encontrado.
-    """
-    resultados = []
-    knowledge_dir = "knowledge"
-
-    if not os.path.exists(knowledge_dir):
-        return "No hay archivos de conocimiento disponibles."
-
-    for archivo in os.listdir(knowledge_dir):
-        ruta = os.path.join(knowledge_dir, archivo)
-        if archivo.startswith(".") or not os.path.isfile(ruta):
-            continue
-        try:
-            with open(ruta, "r", encoding="utf-8") as f:
-                contenido = f.read()
-                # Búsqueda simple por coincidencia de texto
-                if consulta.lower() in contenido.lower():
-                    resultados.append(f"[{archivo}]: {contenido[:500]}")
-        except (UnicodeDecodeError, IOError):
-            continue
-
-    if resultados:
-        return "\n---\n".join(resultados)
-    return "No encontré información específica sobre eso en mis archivos."

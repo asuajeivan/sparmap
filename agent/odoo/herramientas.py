@@ -34,8 +34,8 @@ def _sin_odoo() -> dict:
 
 def buscar_producto(nombre: str) -> dict:
     """
-    Busca productos en el catálogo por nombre (búsqueda flexible).
-    Retorna hasta 5 resultados con precio y stock disponible.
+    Busca productos en el catalogo por nombre (busqueda flexible).
+    Retorna hasta 10 resultados con disponibilidad (sin precios).
     """
     if not _odoo or not _odoo.esta_disponible():
         return _sin_odoo()
@@ -44,57 +44,94 @@ def buscar_producto(nombre: str) -> dict:
         "product.product", "search_read",
         [[["name", "ilike", nombre], ["active", "=", True], ["sale_ok", "=", True]]],
         {
-            "fields": ["id", "name", "list_price", "qty_available", "default_code", "description_sale"],
-            "limit": 5,
+            "fields": ["id", "name", "list_price", "qty_available", "default_code", "categ_id"],
+            "limit": 10,
             "order": "name asc",
         }
     )
 
     if resultados is None:
-        return {"exito": False, "error": "No se pudo consultar el catálogo."}
+        return {"exito": False, "error": "No se pudo consultar el catalogo."}
     if not resultados:
-        return {"exito": True, "datos": [], "mensaje": f"No encontré productos con el nombre '{nombre}'."}
+        return {"exito": True, "datos": [], "mensaje": f"No encontre productos con el nombre '{nombre}'."}
 
     productos = [
         {
-            "id": p["id"],
             "nombre": p["name"],
-            "codigo": p.get("default_code") or "—",
+            "codigo": p.get("default_code") or "",
             "precio": p["list_price"],
-            "stock": p["qty_available"],
-            "descripcion": p.get("description_sale") or "",
+            "disponible": p["qty_available"] > 0,
+            "categoria": p["categ_id"][1] if p.get("categ_id") else "",
         }
         for p in resultados
     ]
     return {"exito": True, "datos": productos}
 
 
-def obtener_producto_por_id(producto_id: int) -> dict:
-    """Obtiene los detalles completos de un producto por su ID."""
+def obtener_catalogo(categoria: str = "") -> dict:
+    """
+    Retorna todos los productos disponibles (con stock > 0).
+    Opcionalmente filtra por categoria.
+    """
     if not _odoo or not _odoo.esta_disponible():
         return _sin_odoo()
 
-    resultado = _odoo.llamar(
-        "product.product", "read",
-        [[producto_id]],
-        {"fields": ["id", "name", "list_price", "qty_available", "virtual_available", "default_code", "description_sale"]}
+    # Solo categorias de productos vendibles (excluir contables/administrativas)
+    CATEGORIAS_EXCLUIDAS = [
+        "ACTIVO", "COSTOS", "GASTOS", "PASIVO", "INGRESOS", "FLETES", "NO UTILIZAR"
+    ]
+    dominio = [
+        ["active", "=", True],
+        ["sale_ok", "=", True],
+        ["qty_available", ">", 0],
+    ]
+    for cat_excl in CATEGORIAS_EXCLUIDAS:
+        dominio.append(["categ_id.complete_name", "not ilike", cat_excl])
+    if categoria:
+        dominio.append(["categ_id.complete_name", "ilike", categoria])
+
+    resultados = _odoo.llamar(
+        "product.product", "search_read",
+        [dominio],
+        {
+            "fields": ["name", "list_price", "qty_available", "default_code", "categ_id"],
+            "limit": 50,
+            "order": "categ_id, name asc",
+        }
     )
 
-    if not resultado:
-        return {"exito": False, "error": "Producto no encontrado."}
-    p = resultado[0]
-    return {
-        "exito": True,
-        "datos": {
-            "id": p["id"],
+    if resultados is None:
+        return {"exito": False, "error": "No se pudo consultar el catalogo."}
+    if not resultados:
+        return {"exito": True, "datos": [], "mensaje": "No hay productos disponibles en este momento."}
+
+    # Agrupar por subcategoria (ultimo nivel del nombre completo)
+    por_categoria = {}
+    # Necesitamos el complete_name de la categoria
+    categ_ids = list({p["categ_id"][0] for p in resultados if p.get("categ_id")})
+    categ_map = {}
+    if categ_ids:
+        cats = _odoo.llamar(
+            "product.category", "read",
+            [categ_ids],
+            {"fields": ["complete_name"]}
+        )
+        if cats:
+            categ_map = {c["id"]: c["complete_name"] for c in cats}
+
+    for p in resultados:
+        cat_id = p["categ_id"][0] if p.get("categ_id") else 0
+        cat_name = categ_map.get(cat_id, p["categ_id"][1] if p.get("categ_id") else "Otros")
+        # Usar solo el ultimo nivel para agrupar (ej: "ELECTRICIDAD / CABLES ELECON" -> "CABLES ELECON")
+        cat_short = cat_name.split(" / ")[-1] if " / " in cat_name else cat_name
+        if cat_short not in por_categoria:
+            por_categoria[cat_short] = []
+        por_categoria[cat_short].append({
             "nombre": p["name"],
-            "codigo": p.get("default_code") or "—",
             "precio": p["list_price"],
-            "stock_disponible": p["qty_available"],
-            "stock_futuro": p.get("virtual_available", 0),
-            "descripcion": p.get("description_sale") or "",
-        }
-    }
+        })
+
+    return {"exito": True, "datos": por_categoria}
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -319,9 +356,9 @@ HERRAMIENTAS_CLAUDE = [
     {
         "name": "buscar_producto",
         "description": (
-            "Busca productos en el catálogo de la empresa por nombre. "
-            "Úsalo cuando el cliente pregunta por un producto, su precio, "
-            "disponibilidad, si hay stock, o qué productos ofrece la empresa."
+            "Busca productos en el inventario por nombre. "
+            "Usalo cuando el cliente pregunta si tienen un producto, "
+            "disponibilidad, stock, o busca algo especifico (cable 12, breaker, enchufe, etc.)."
         ),
         "input_schema": {
             "type": "object",
@@ -335,87 +372,22 @@ HERRAMIENTAS_CLAUDE = [
         }
     },
     {
-        "name": "buscar_cliente_por_telefono",
+        "name": "obtener_catalogo",
         "description": (
-            "Busca si el cliente que está escribiendo ya existe en el sistema. "
-            "Úsalo al inicio de la conversación o cuando necesites datos del cliente "
-            "para consultar sus pedidos o facturas."
+            "Retorna el catalogo completo de productos disponibles, agrupados por categoria. "
+            "Usalo cuando el cliente pide el catalogo, lista de productos, "
+            "o quiere ver todo lo que hay disponible. "
+            "Opcionalmente filtra por categoria (cables, iluminacion, etc.)."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "telefono": {
+                "categoria": {
                     "type": "string",
-                    "description": "Número de teléfono del cliente (con o sin código de país)"
+                    "description": "Categoria para filtrar (opcional). Dejar vacio para todo el catalogo."
                 }
             },
-            "required": ["telefono"]
-        }
-    },
-    {
-        "name": "consultar_pedidos_cliente",
-        "description": (
-            "Consulta los últimos pedidos de un cliente. "
-            "Úsalo cuando el cliente pregunta por el estado de su pedido, "
-            "su historial de compras o cuándo llega su pedido."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "partner_id": {
-                    "type": "integer",
-                    "description": "ID del cliente en Odoo (obtenido con buscar_cliente_por_telefono)"
-                }
-            },
-            "required": ["partner_id"]
-        }
-    },
-    {
-        "name": "consultar_facturas_pendientes",
-        "description": (
-            "Consulta las facturas pendientes de pago de un cliente. "
-            "Úsalo cuando el cliente pregunta cuánto debe, "
-            "qué facturas tiene pendientes o su saldo."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "partner_id": {
-                    "type": "integer",
-                    "description": "ID del cliente en Odoo (obtenido con buscar_cliente_por_telefono)"
-                }
-            },
-            "required": ["partner_id"]
-        }
-    },
-    {
-        "name": "crear_lead",
-        "description": (
-            "Registra un lead en el CRM cuando un cliente nuevo muestra interés "
-            "o quiere que lo contacten. Úsalo cuando el cliente pide información "
-            "de ventas, quiere una cotización formal o pide que lo llamen."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "nombre_contacto": {
-                    "type": "string",
-                    "description": "Nombre del cliente o persona de contacto"
-                },
-                "telefono": {
-                    "type": "string",
-                    "description": "Número de teléfono del cliente"
-                },
-                "interes": {
-                    "type": "string",
-                    "description": "Qué producto o servicio le interesa al cliente"
-                },
-                "notas": {
-                    "type": "string",
-                    "description": "Información adicional relevante de la conversación"
-                }
-            },
-            "required": ["nombre_contacto", "telefono", "interes"]
+            "required": []
         }
     },
 ]
@@ -425,15 +397,7 @@ HERRAMIENTAS_CLAUDE = [
 
 MAPA_HERRAMIENTAS = {
     "buscar_producto": lambda args: buscar_producto(args["nombre"]),
-    "buscar_cliente_por_telefono": lambda args: buscar_cliente_por_telefono(args["telefono"]),
-    "consultar_pedidos_cliente": lambda args: consultar_pedidos_cliente(args["partner_id"]),
-    "consultar_facturas_pendientes": lambda args: consultar_facturas_pendientes(args["partner_id"]),
-    "crear_lead": lambda args: crear_lead(
-        args["nombre_contacto"],
-        args["telefono"],
-        args["interes"],
-        args.get("notas", "")
-    ),
+    "obtener_catalogo": lambda args: obtener_catalogo(args.get("categoria", "")),
 }
 
 
