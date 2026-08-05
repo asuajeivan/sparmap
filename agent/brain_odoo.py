@@ -58,10 +58,12 @@ Cuando usar cada herramienta:
 - Cliente quiere filtrar por tipo (solo cables, solo iluminacion) → usa obtener_catalogo con categoria
 
 REGLAS:
-- SIEMPRE consulta el inventario antes de responder sobre disponibilidad. NUNCA inventes datos.
-- Responde si el producto esta disponible o no, y el precio. NUNCA digas cuantas unidades hay en stock.
-- Si el producto no aparece en la busqueda, di que no lo tienes registrado y da el numero de contacto 0412-0402832.
-- Cuando envies el catalogo, organiza los productos por categoria de forma clara, solo nombre y precio.
+- SIEMPRE usa buscar_producto o obtener_catalogo ANTES de responder sobre disponibilidad. NUNCA digas que no tienes acceso al inventario.
+- Muestra SOLO los productos donde disponible=true. Ignora los que tienen disponible=false.
+- Los precios estan en dolares (USD). Muestra el precio con formato $X.XX
+- NUNCA digas cuantas unidades hay en stock. Solo di "disponible" o "no disponible".
+- Si el producto no aparece en la busqueda, di que no lo tienes registrado y da el numero 0412-0402832.
+- Cuando envies el catalogo, organiza por categoria, solo nombre y precio en USD.
 """
     return base
 
@@ -135,7 +137,7 @@ async def _llamar_claude(
 
     for iteracion in range(max_iteraciones):
         kwargs = {
-            "model": "claude-sonnet-4-6",
+            "model": "claude-haiku-4-5-20251001",
             "max_tokens": 1024,
             "system": system_prompt,
             "messages": mensajes_actuales,

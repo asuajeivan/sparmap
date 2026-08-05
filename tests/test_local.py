@@ -1,37 +1,47 @@
 # tests/test_local.py — Simulador de chat en terminal
-# Generado por AgentKit
-
-"""
-Prueba tu agente sin necesitar WhatsApp.
-Simula una conversación en la terminal.
-"""
 
 import asyncio
 import sys
 import os
 
-# Agregar el directorio raíz al path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from agent.brain import generar_respuesta
+from dotenv import load_dotenv
+load_dotenv()
+
 from agent.memory import inicializar_db, guardar_mensaje, obtener_historial, limpiar_historial
+
+# Usar brain_odoo si Odoo esta activado
+ODOO_ENABLED = os.getenv("ODOO_ENABLED", "false").lower() == "true"
+if ODOO_ENABLED:
+    from agent.brain_odoo import generar_respuesta
+else:
+    from agent.brain import generar_respuesta
 
 TELEFONO_TEST = "test-local-001"
 
 
 async def main():
-    """Loop principal del chat de prueba."""
     await inicializar_db()
+
+    # Inicializar Odoo si esta activado
+    if ODOO_ENABLED:
+        from agent.odoo.conector import ConectorOdoo
+        from agent.odoo.herramientas import inicializar as inicializar_odoo
+        conector = ConectorOdoo()
+        if conector.conectar():
+            inicializar_odoo(conector)
+            print("  Odoo conectado")
+        else:
+            print("  ADVERTENCIA: Odoo no pudo conectar")
 
     print()
     print("=" * 55)
-    print("   AgentKit — Test Local")
+    print("   SPARMAP — Test Local")
     print("=" * 55)
     print()
-    print("  Escribe mensajes como si fueras un cliente.")
-    print("  Comandos especiales:")
-    print("    'limpiar'  — borra el historial")
-    print("    'salir'    — termina el test")
+    print("  Escribe como si fueras un cliente.")
+    print("  Comandos: 'limpiar' | 'salir'")
     print()
     print("-" * 55)
     print()
@@ -55,16 +65,13 @@ async def main():
             print("[Historial borrado]\n")
             continue
 
-        # Obtener historial ANTES de guardar (brain.py agrega el mensaje actual)
         historial = await obtener_historial(TELEFONO_TEST)
 
-        # Generar respuesta
         print("\nAgente: ", end="", flush=True)
-        respuesta = await generar_respuesta(mensaje, historial)
+        respuesta = await generar_respuesta(mensaje, historial, telefono=TELEFONO_TEST)
         print(respuesta)
         print()
 
-        # Guardar mensaje del usuario y respuesta del agente
         await guardar_mensaje(TELEFONO_TEST, "user", mensaje)
         await guardar_mensaje(TELEFONO_TEST, "assistant", respuesta)
 
