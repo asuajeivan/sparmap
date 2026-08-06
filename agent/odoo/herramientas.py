@@ -35,30 +35,61 @@ def _sin_odoo() -> dict:
 def buscar_producto(nombre: str) -> dict:
     """
     Busca productos en el catalogo por nombre (busqueda flexible).
-    Retorna hasta 10 resultados con disponibilidad (sin precios).
+    Divide el termino en palabras y busca con AND para coincidencias parciales.
+    Ej: "breaker tripolar" busca productos que tengan "breaker" Y "tripolar" en el nombre.
+    Si no encuentra con AND, reintenta con cada palabra por separado (OR).
     """
     if not _odoo or not _odoo.esta_disponible():
         return _sin_odoo()
 
+    palabras = nombre.strip().split()
+    base_domain = [["active", "=", True], ["sale_ok", "=", True]]
+
+    # Primero: buscar con AND (todas las palabras deben coincidir)
+    dominio_and = list(base_domain)
+    for palabra in palabras:
+        dominio_and.append(["name", "ilike", palabra])
+
     resultados = _odoo.llamar(
         "product.product", "search_read",
-        [[["name", "ilike", nombre], ["active", "=", True], ["sale_ok", "=", True]]],
+        [dominio_and],
         {
-            "fields": ["id", "name", "list_price", "qty_available", "default_code", "categ_id"],
-            "limit": 10,
-            "order": "name asc",
+            "fields": ["name", "list_price", "qty_available", "default_code", "categ_id"],
+            "limit": 15,
+            "order": "qty_available desc, name asc",
         }
     )
+
+    # Si no hay resultados con AND y hay mas de una palabra, buscar con OR
+    if not resultados and len(palabras) > 1:
+        dominio_or = list(base_domain)
+        or_conditions = [["name", "ilike", p] for p in palabras]
+        # Construir OR con pipes de Odoo
+        dominio_or_full = []
+        for i, cond in enumerate(or_conditions):
+            if i > 0:
+                dominio_or_full.insert(0, "|")
+            dominio_or_full.append(cond)
+        dominio_or = dominio_or_full + base_domain
+
+        resultados = _odoo.llamar(
+            "product.product", "search_read",
+            [dominio_or],
+            {
+                "fields": ["name", "list_price", "qty_available", "default_code", "categ_id"],
+                "limit": 15,
+                "order": "qty_available desc, name asc",
+            }
+        )
 
     if resultados is None:
         return {"exito": False, "error": "No se pudo consultar el catalogo."}
     if not resultados:
-        return {"exito": True, "datos": [], "mensaje": f"No encontre productos con el nombre '{nombre}'."}
+        return {"exito": True, "datos": [], "mensaje": f"No encontre productos con '{nombre}'."}
 
     productos = [
         {
             "nombre": p["name"],
-            "codigo": p.get("default_code") or "",
             "precio": p["list_price"],
             "disponible": p["qty_available"] > 0,
             "categoria": p["categ_id"][1] if p.get("categ_id") else "",
