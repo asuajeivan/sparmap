@@ -53,7 +53,7 @@ def buscar_producto(nombre: str) -> dict:
     nombre_limpio = _quitar_acentos(nombre.strip())
     palabras = nombre_limpio.split()
     campos_busqueda = ["name", "list_price", "qty_available", "default_code", "categ_id"]
-    opts = {"fields": campos_busqueda, "limit": 15, "order": "qty_available desc, name asc"}
+    opts = {"fields": campos_busqueda, "limit": 20, "order": "qty_available desc, name asc"}
     base_domain = [["active", "=", True], ["sale_ok", "=", True]]
 
     # Buscar con AND (todas las palabras deben coincidir)

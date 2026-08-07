@@ -121,7 +121,7 @@ async def _llamar_claude(
     for iteracion in range(max_iteraciones):
         kwargs = {
             "model": "claude-haiku-4-5-20251001",
-            "max_tokens": 512,
+            "max_tokens": 1024,
             "system": system_prompt,
             "messages": mensajes_actuales,
         }
