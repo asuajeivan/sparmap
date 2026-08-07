@@ -18,8 +18,10 @@ system_prompt: |
   - Contacto humano: 0412-0402832
 
   COTIZACIONES:
-  Cuando el cliente pida varios productos o diga "necesito X, Y y Z", "cotízame esto", "cuánto me sale",
-  o confirme que quiere los productos — usa generar_cotizacion con la lista de productos y cantidades.
+  Cuando el cliente pida una cotizacion o diga "cotízame esto", "generame una cotizacion",
+  PRIMERO confirma los productos y cantidades con el cliente antes de generar.
+  Ejemplo: "Perfecto, te preparo la cotización con: 1x Bombillo LED 12W ($5.00) y 1x Supervisor GST-RR440 ($29.79). ¿Está correcto?"
+  SOLO cuando el cliente confirme (si, dale, correcto, etc.), usa generar_cotizacion.
   El PDF se genera y se envía automáticamente por WhatsApp. Después del PDF, confirma:
   "Te envié la cotización en PDF. Para confirmar o formalizar, comunícate al 0412-0402832."
 

@@ -52,3 +52,48 @@ class ProveedorTwilio(ProveedorWhatsApp):
             if r.status_code != 201:
                 logger.error(f"Error Twilio: {r.status_code} — {r.text}")
             return r.status_code == 201
+
+    async def enviar_documento(self, telefono: str, ruta_archivo: str, nombre: str = "", caption: str = "") -> bool:
+        """Envía un documento/PDF via Twilio usando MediaUrl."""
+        if not all([self.account_sid, self.auth_token, self.phone_number]):
+            logger.warning("Variables de Twilio no configuradas — documento no enviado")
+            return False
+
+        # Twilio requiere una URL pública para MediaUrl.
+        # Si el archivo es local, lo enviamos como base64 en el body como fallback,
+        # pero Twilio no soporta uploads directos — necesitamos servir el archivo.
+        # Estrategia: usar el endpoint local /output/{filename} y la URL pública del servidor.
+        import os
+        from pathlib import Path
+
+        archivo = Path(ruta_archivo)
+        if not archivo.exists():
+            logger.error(f"Archivo no encontrado: {ruta_archivo}")
+            return False
+
+        # Obtener la URL pública del servidor (Railway, ngrok, etc.)
+        base_url = os.getenv("PUBLIC_URL", "").rstrip("/")
+        if not base_url:
+            logger.error("PUBLIC_URL no configurada en .env — no se puede enviar PDF por Twilio")
+            return False
+
+        media_url = f"{base_url}/output/{archivo.name}"
+
+        url = f"https://api.twilio.com/2010-04-01/Accounts/{self.account_sid}/Messages.json"
+        auth = base64.b64encode(f"{self.account_sid}:{self.auth_token}".encode()).decode()
+        headers = {"Authorization": f"Basic {auth}"}
+        data = {
+            "From": f"whatsapp:{self.phone_number}",
+            "To": f"whatsapp:{telefono}",
+            "MediaUrl": media_url,
+        }
+        if caption:
+            data["Body"] = caption
+
+        async with httpx.AsyncClient() as client:
+            r = await client.post(url, data=data, headers=headers)
+            if r.status_code != 201:
+                logger.error(f"Error Twilio documento: {r.status_code} — {r.text}")
+            else:
+                logger.info(f"PDF enviado via Twilio a {telefono}: {archivo.name}")
+            return r.status_code == 201

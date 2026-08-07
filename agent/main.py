@@ -115,6 +115,16 @@ async def health_check():
     return {"status": "ok", "service": "agentkit"}
 
 
+@app.get("/output/{filename}")
+async def servir_output(filename: str):
+    """Sirve archivos de la carpeta output (PDFs de cotizaciones/reportes)."""
+    from pathlib import Path
+    filepath = Path(__file__).parent.parent / "output" / filename
+    if not filepath.exists() or not filepath.is_file():
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+    return FileResponse(str(filepath), media_type="application/pdf", filename=filename)
+
+
 @app.get("/webhook")
 async def webhook_verificacion(request: Request):
     """Verificación GET del webhook (requerido por Meta Cloud API, no-op para otros)."""

@@ -404,18 +404,31 @@ def generar_cotizacion(productos: list[dict], cliente_nombre: str = "", cliente_
         nombre = item.get("nombre", "")
         cantidad = item.get("cantidad", 1)
 
-        # Buscar producto en Odoo
+        # Buscar producto en Odoo (misma logica robusta que buscar_producto)
         nombre_limpio = _quitar_acentos(nombre.strip())
-        palabras = nombre_limpio.split()
-        dominio = [["active", "=", True], ["sale_ok", "=", True], ["qty_available", ">", 0]]
-        for palabra in palabras:
-            dominio.append(["name", "ilike", palabra])
+        # Separar por espacios, "/", "(", ")" y "-" para tokenizar bien
+        import re
+        palabras = [p for p in re.split(r'[\s/\(\)\-]+', nombre_limpio) if len(p) > 1]
+        campos = ["id", "name", "list_price", "qty_available"]
+        opts = {"fields": campos, "limit": 1, "order": "qty_available desc"}
+        base_domain = [["active", "=", True], ["sale_ok", "=", True], ["qty_available", ">", 0]]
 
-        resultados = _odoo.llamar(
-            "product.product", "search_read",
-            [dominio],
-            {"fields": ["id", "name", "list_price", "qty_available"], "limit": 1, "order": "qty_available desc"}
-        )
+        # Intento 1: AND (todas las palabras)
+        dominio_and = list(base_domain)
+        for palabra in palabras:
+            dominio_and.append(["name", "ilike", palabra])
+        resultados = _odoo.llamar("product.product", "search_read", [dominio_and], opts)
+
+        # Intento 2: OR (cualquier palabra) si AND fallo y hay mas de 1 palabra
+        if not resultados and len(palabras) > 1:
+            or_conditions = [["name", "ilike", p] for p in palabras]
+            dominio_or = []
+            for i, cond in enumerate(or_conditions):
+                if i > 0:
+                    dominio_or.insert(0, "|")
+                dominio_or.append(cond)
+            dominio_or = dominio_or + base_domain
+            resultados = _odoo.llamar("product.product", "search_read", [dominio_or], opts)
 
         if resultados:
             prod = resultados[0]
@@ -672,8 +685,8 @@ HERRAMIENTAS_CLAUDE = [
         "name": "generar_cotizacion",
         "description": (
             "Genera una cotización en PDF con los productos que el cliente solicita. "
-            "Úsalo cuando el cliente pide una cotización, dice 'quiero estos productos', "
-            "'necesito X y Y', o confirma que quiere los productos que le mostraste. "
+            "IMPORTANTE: NO uses esta herramienta inmediatamente. Primero confirma con el cliente "
+            "la lista de productos y cantidades. SOLO úsala después de que el cliente confirme. "
             "Busca cada producto en Odoo, obtiene el precio real y genera el PDF. "
             "Después de generar la cotización, el PDF se envía por WhatsApp."
         ),
