@@ -10,6 +10,7 @@ lo que el cliente pide por WhatsApp.
 """
 
 import logging
+import unicodedata
 from agent.odoo.conector import ConectorOdoo
 
 logger = logging.getLogger("agentkit")
@@ -28,6 +29,12 @@ def _sin_odoo() -> dict:
     return {"exito": False, "error": "Integración con Odoo no disponible en este momento."}
 
 
+def _quitar_acentos(texto: str) -> str:
+    """Quita acentos/tildes de un texto. 'lámpara' → 'lampara'."""
+    nfkd = unicodedata.normalize("NFKD", texto)
+    return "".join(c for c in nfkd if not unicodedata.combining(c))
+
+
 # ═══════════════════════════════════════════════════════════════
 # PRODUCTOS Y CATALOGO
 # ═══════════════════════════════════════════════════════════════
@@ -42,45 +49,35 @@ def buscar_producto(nombre: str) -> dict:
     if not _odoo or not _odoo.esta_disponible():
         return _sin_odoo()
 
-    palabras = nombre.strip().split()
+    # Normalizar: quitar acentos para buscar ambas variantes
+    nombre_limpio = _quitar_acentos(nombre.strip())
+    palabras = nombre_limpio.split()
+    campos_busqueda = ["name", "list_price", "qty_available", "default_code", "categ_id"]
+    opts = {"fields": campos_busqueda, "limit": 15, "order": "qty_available desc, name asc"}
     base_domain = [["active", "=", True], ["sale_ok", "=", True]]
 
-    # Primero: buscar con AND (todas las palabras deben coincidir)
+    # Buscar con AND (todas las palabras deben coincidir)
     dominio_and = list(base_domain)
     for palabra in palabras:
         dominio_and.append(["name", "ilike", palabra])
 
-    resultados = _odoo.llamar(
-        "product.product", "search_read",
-        [dominio_and],
-        {
-            "fields": ["name", "list_price", "qty_available", "default_code", "categ_id"],
-            "limit": 15,
-            "order": "qty_available desc, name asc",
-        }
-    )
+    resultados = _odoo.llamar("product.product", "search_read", [dominio_and], opts)
 
-    # Si no hay resultados con AND y hay mas de una palabra, buscar con OR
+    # Si no hay resultados y hay mas de una palabra, buscar con OR
     if not resultados and len(palabras) > 1:
-        dominio_or = list(base_domain)
         or_conditions = [["name", "ilike", p] for p in palabras]
-        # Construir OR con pipes de Odoo
         dominio_or_full = []
         for i, cond in enumerate(or_conditions):
             if i > 0:
                 dominio_or_full.insert(0, "|")
             dominio_or_full.append(cond)
         dominio_or = dominio_or_full + base_domain
+        resultados = _odoo.llamar("product.product", "search_read", [dominio_or], opts)
 
-        resultados = _odoo.llamar(
-            "product.product", "search_read",
-            [dominio_or],
-            {
-                "fields": ["name", "list_price", "qty_available", "default_code", "categ_id"],
-                "limit": 15,
-                "order": "qty_available desc, name asc",
-            }
-        )
+    # Si aun no hay, buscar tambien por categoria (ej: "lampara" podria estar en cat ILUMINACION)
+    if not resultados:
+        dominio_cat = list(base_domain) + [["categ_id.complete_name", "ilike", nombre_limpio]]
+        resultados = _odoo.llamar("product.product", "search_read", [dominio_cat], opts)
 
     if resultados is None:
         return {"exito": False, "error": "No se pudo consultar el catalogo."}
