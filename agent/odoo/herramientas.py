@@ -84,18 +84,20 @@ def buscar_producto(nombre: str) -> dict:
 
     if resultados is None:
         return {"exito": False, "error": "No se pudo consultar el catalogo."}
-    if not resultados:
-        return {"exito": True, "datos": [], "mensaje": f"No encontre productos con '{nombre}'."}
 
+    # Solo devolver productos CON stock — los sin stock no existen para el cliente
     productos = [
         {
             "nombre": p["name"],
             "precio": p["list_price"],
-            "disponible": p["qty_available"] > 0,
             "categoria": p["categ_id"][1] if p.get("categ_id") else "",
         }
         for p in resultados
+        if p["qty_available"] > 0
     ]
+
+    if not productos:
+        return {"exito": True, "datos": [], "mensaje": f"No tenemos '{nombre}' disponible."}
     return {"exito": True, "datos": productos}
 
 
