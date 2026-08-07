@@ -19,6 +19,9 @@ knowledge/*
 # Session state
 config/session.yaml
 
+# PDFs generados
+output/
+
 # OS
 .DS_Store
 Thumbs.db

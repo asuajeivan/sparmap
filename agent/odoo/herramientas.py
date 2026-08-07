@@ -379,6 +379,254 @@ def consultar_facturas_pendientes(partner_id: int) -> dict:
 
 
 # ═══════════════════════════════════════════════════════════════
+# COTIZACION PDF
+# ═══════════════════════════════════════════════════════════════
+
+def generar_cotizacion(productos: list[dict], cliente_nombre: str = "", cliente_telefono: str = "") -> dict:
+    """
+    Genera una cotizacion PDF a partir de una lista de productos.
+
+    Args:
+        productos: Lista de dicts con: nombre, cantidad (cada uno se busca en Odoo para obtener precio)
+        cliente_nombre: Nombre del cliente (opcional)
+        cliente_telefono: Telefono del cliente (opcional)
+
+    Returns:
+        Dict con exito, ruta del PDF, y resumen de la cotizacion
+    """
+    if not _odoo or not _odoo.esta_disponible():
+        return _sin_odoo()
+
+    productos_cotizacion = []
+    no_encontrados = []
+
+    for item in productos:
+        nombre = item.get("nombre", "")
+        cantidad = item.get("cantidad", 1)
+
+        # Buscar producto en Odoo
+        nombre_limpio = _quitar_acentos(nombre.strip())
+        palabras = nombre_limpio.split()
+        dominio = [["active", "=", True], ["sale_ok", "=", True], ["qty_available", ">", 0]]
+        for palabra in palabras:
+            dominio.append(["name", "ilike", palabra])
+
+        resultados = _odoo.llamar(
+            "product.product", "search_read",
+            [dominio],
+            {"fields": ["id", "name", "list_price", "qty_available"], "limit": 1, "order": "qty_available desc"}
+        )
+
+        if resultados:
+            prod = resultados[0]
+            productos_cotizacion.append({
+                "product_id": prod["id"],
+                "nombre": prod["name"],
+                "precio": prod["list_price"],
+                "cantidad": cantidad,
+            })
+        else:
+            no_encontrados.append(nombre)
+
+    if not productos_cotizacion:
+        return {
+            "exito": False,
+            "error": "No se encontro ninguno de los productos solicitados.",
+            "no_encontrados": no_encontrados,
+        }
+
+    # Generar PDF
+    from agent.pdf_generator import generar_cotizacion_pdf
+    ruta_pdf = generar_cotizacion_pdf(
+        productos=productos_cotizacion,
+        cliente_nombre=cliente_nombre or "Cliente WhatsApp",
+        cliente_telefono=cliente_telefono,
+    )
+
+    total = sum(p["precio"] * p["cantidad"] for p in productos_cotizacion)
+
+    resultado = {
+        "exito": True,
+        "ruta_pdf": ruta_pdf,
+        "productos_cotizados": [
+            {"nombre": p["nombre"], "precio": p["precio"], "cantidad": p["cantidad"],
+             "subtotal": p["precio"] * p["cantidad"]}
+            for p in productos_cotizacion
+        ],
+        "total": total,
+        "mensaje": f"Cotización generada con {len(productos_cotizacion)} productos por ${total:,.2f}.",
+    }
+    if no_encontrados:
+        resultado["no_encontrados"] = no_encontrados
+        resultado["mensaje"] += f" No se encontraron: {', '.join(no_encontrados)}."
+
+    return resultado
+
+
+# ═══════════════════════════════════════════════════════════════
+# REPORTE DIARIO (datos desde Odoo)
+# ═══════════════════════════════════════════════════════════════
+
+def obtener_datos_reporte_diario() -> dict:
+    """
+    Recopila todos los datos de Odoo necesarios para el reporte diario.
+    Retorna un dict listo para pasar a generar_reporte_diario_pdf().
+    """
+    if not _odoo or not _odoo.esta_disponible():
+        return _sin_odoo()
+
+    from datetime import date, timedelta
+    hoy = date.today()
+    hace_30 = hoy - timedelta(days=30)
+
+    datos = {}
+
+    # ── Resumen de ventas del dia ─────────────────────────────────
+    pedidos_hoy = _odoo.llamar(
+        "sale.order", "search_read",
+        [[
+            ["date_order", ">=", str(hoy)],
+            ["state", "in", ["sale", "done"]],
+        ]],
+        {"fields": ["amount_total"], "limit": 0}
+    ) or []
+
+    pedidos_pendientes = _odoo.llamar(
+        "sale.order", "search_count",
+        [[["state", "in", ["draft", "sent"]]]],
+    ) or 0
+
+    datos["resumen_ventas"] = {
+        "total_hoy": sum(p["amount_total"] for p in pedidos_hoy),
+        "cantidad_pedidos": len(pedidos_hoy),
+        "pedidos_pendientes": pedidos_pendientes,
+    }
+
+    # ── Cuentas por cobrar ────────────────────────────────────────
+    facturas_clientes = _odoo.llamar(
+        "account.move", "search_read",
+        [[
+            ["move_type", "=", "out_invoice"],
+            ["payment_state", "in", ["not_paid", "partial"]],
+            ["state", "=", "posted"],
+        ]],
+        {
+            "fields": ["partner_id", "name", "amount_residual", "invoice_date_due", "payment_state"],
+            "order": "invoice_date_due asc",
+            "limit": 30,
+        }
+    ) or []
+
+    estados_pago = {"not_paid": "Sin pagar", "partial": "Pago parcial"}
+    datos["cuentas_por_cobrar"] = [
+        {
+            "cliente": f["partner_id"][1] if f.get("partner_id") else "—",
+            "factura": f["name"],
+            "monto": f["amount_residual"],
+            "vencimiento": str(f["invoice_date_due"]) if f.get("invoice_date_due") else "—",
+            "estado": estados_pago.get(f["payment_state"], f["payment_state"]),
+        }
+        for f in facturas_clientes
+    ]
+
+    # ── Cuentas por pagar ─────────────────────────────────────────
+    facturas_proveedores = _odoo.llamar(
+        "account.move", "search_read",
+        [[
+            ["move_type", "=", "in_invoice"],
+            ["payment_state", "in", ["not_paid", "partial"]],
+            ["state", "=", "posted"],
+        ]],
+        {
+            "fields": ["partner_id", "name", "amount_residual", "invoice_date_due"],
+            "order": "invoice_date_due asc",
+            "limit": 30,
+        }
+    ) or []
+
+    datos["cuentas_por_pagar"] = [
+        {
+            "proveedor": f["partner_id"][1] if f.get("partner_id") else "—",
+            "factura": f["name"],
+            "monto": f["amount_residual"],
+            "vencimiento": str(f["invoice_date_due"]) if f.get("invoice_date_due") else "—",
+        }
+        for f in facturas_proveedores
+    ]
+
+    # ── Stock bajo ────────────────────────────────────────────────
+    # Productos almacenables con stock <= reorder min o <= 5 unidades
+    productos_stock = _odoo.llamar(
+        "product.product", "search_read",
+        [[
+            ["active", "=", True],
+            ["detailed_type", "=", "product"],
+            ["qty_available", "<=", 5],
+            ["qty_available", ">=", 0],
+            ["sale_ok", "=", True],
+        ]],
+        {
+            "fields": ["name", "qty_available", "categ_id"],
+            "order": "qty_available asc",
+            "limit": 30,
+        }
+    ) or []
+
+    datos["stock_bajo"] = [
+        {
+            "producto": p["name"],
+            "cantidad": p["qty_available"],
+            "minimo": 5,
+            "categoria": p["categ_id"][1] if p.get("categ_id") else "—",
+        }
+        for p in productos_stock
+    ]
+
+    # ── Top productos vendidos (ultimos 30 dias) ──────────────────
+    lineas_venta = _odoo.llamar(
+        "sale.order.line", "search_read",
+        [[
+            ["order_id.state", "in", ["sale", "done"]],
+            ["order_id.date_order", ">=", str(hace_30)],
+        ]],
+        {
+            "fields": ["product_id", "product_uom_qty", "price_subtotal"],
+            "limit": 200,
+            "order": "price_subtotal desc",
+        }
+    ) or []
+
+    # Agrupar por producto
+    top_map = {}
+    for l in lineas_venta:
+        pid = l["product_id"][0] if l.get("product_id") else 0
+        pname = l["product_id"][1] if l.get("product_id") else "—"
+        if pid not in top_map:
+            top_map[pid] = {"producto": pname, "cantidad_vendida": 0, "ingresos": 0}
+        top_map[pid]["cantidad_vendida"] += l["product_uom_qty"]
+        top_map[pid]["ingresos"] += l["price_subtotal"]
+
+    datos["top_productos"] = sorted(
+        top_map.values(), key=lambda x: x["ingresos"], reverse=True
+    )[:10]
+
+    # ── Proveedores con facturas pendientes ───────────────────────
+    prov_map = {}
+    for f in facturas_proveedores:
+        pname = f["partner_id"][1] if f.get("partner_id") else "—"
+        if pname not in prov_map:
+            prov_map[pname] = {"proveedor": pname, "facturas_pendientes": 0, "monto_total": 0}
+        prov_map[pname]["facturas_pendientes"] += 1
+        prov_map[pname]["monto_total"] += f["amount_residual"]
+
+    datos["proveedores_activos"] = sorted(
+        prov_map.values(), key=lambda x: x["monto_total"], reverse=True
+    )
+
+    return {"exito": True, "datos": datos}
+
+
+# ═══════════════════════════════════════════════════════════════
 # DEFINICIONES DE HERRAMIENTAS PARA CLAUDE (tool_use)
 # ═══════════════════════════════════════════════════════════════
 
@@ -420,6 +668,49 @@ HERRAMIENTAS_CLAUDE = [
             "required": []
         }
     },
+    {
+        "name": "generar_cotizacion",
+        "description": (
+            "Genera una cotización en PDF con los productos que el cliente solicita. "
+            "Úsalo cuando el cliente pide una cotización, dice 'quiero estos productos', "
+            "'necesito X y Y', o confirma que quiere los productos que le mostraste. "
+            "Busca cada producto en Odoo, obtiene el precio real y genera el PDF. "
+            "Después de generar la cotización, el PDF se envía por WhatsApp."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "productos": {
+                    "type": "array",
+                    "description": "Lista de productos con nombre y cantidad",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "nombre": {
+                                "type": "string",
+                                "description": "Nombre o descripcion del producto"
+                            },
+                            "cantidad": {
+                                "type": "integer",
+                                "description": "Cantidad deseada (default: 1)",
+                                "default": 1
+                            }
+                        },
+                        "required": ["nombre"]
+                    }
+                },
+                "cliente_nombre": {
+                    "type": "string",
+                    "description": "Nombre del cliente (si se conoce)"
+                },
+                "cliente_telefono": {
+                    "type": "string",
+                    "description": "Telefono del cliente"
+                }
+            },
+            "required": ["productos"]
+        }
+    },
 ]
 
 
@@ -428,6 +719,11 @@ HERRAMIENTAS_CLAUDE = [
 MAPA_HERRAMIENTAS = {
     "buscar_producto": lambda args: buscar_producto(args["nombre"]),
     "obtener_catalogo": lambda args: obtener_catalogo(args.get("categoria", "")),
+    "generar_cotizacion": lambda args: generar_cotizacion(
+        args["productos"],
+        args.get("cliente_nombre", ""),
+        args.get("cliente_telefono", ""),
+    ),
 }
 
 

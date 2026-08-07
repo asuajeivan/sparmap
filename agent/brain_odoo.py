@@ -67,7 +67,7 @@ def _mensaje_fallback() -> str:
 
 # ─── Generación de respuesta ─────────────────────────────────────────────────
 
-async def generar_respuesta(mensaje: str, historial: list[dict], telefono: str = None) -> str:
+async def generar_respuesta(mensaje: str, historial: list[dict], telefono: str = None) -> str | dict:
     """
     Genera una respuesta usando Claude API, con soporte opcional para Odoo.
 
@@ -77,7 +77,7 @@ async def generar_respuesta(mensaje: str, historial: list[dict], telefono: str =
         telefono:  Número del cliente (para buscar en Odoo si es necesario)
 
     Returns:
-        La respuesta final generada por Claude
+        str con la respuesta, o dict con {texto, pdf_path} si se genero una cotizacion
     """
     if not mensaje or len(mensaje.strip()) < 2:
         return _mensaje_fallback()
@@ -117,6 +117,7 @@ async def _llamar_claude(
     """
     system_prompt = _cargar_system_prompt()
     mensajes_actuales = list(mensajes)
+    pdf_path = None  # Se llena si se genera una cotizacion
 
     for iteracion in range(max_iteraciones):
         kwargs = {
@@ -137,32 +138,33 @@ async def _llamar_claude(
                 None
             )
             if texto:
+                if pdf_path:
+                    return {"texto": texto, "pdf_path": pdf_path}
                 return texto
-            # Si no hay texto, algo salió mal
             logger.warning("Claude respondió sin texto en end_turn")
             return _mensaje_error()
 
         # ── Claude quiere usar una herramienta ────────────────────────────────
         if response.stop_reason == "tool_use":
-            # Puede haber múltiples tool_use en un solo mensaje (Claude los agrupa)
             tool_uses = [b for b in response.content if b.type == "tool_use"]
 
             if not tool_uses:
                 logger.warning("stop_reason=tool_use pero sin bloques tool_use")
                 break
 
-            # Agregar la respuesta de Claude (con los tool_use) al historial
             mensajes_actuales.append({"role": "assistant", "content": response.content})
 
-            # Ejecutar cada herramienta y recopilar resultados
             resultados_herramientas = []
             for tool_use in tool_uses:
                 nombre = tool_use.name
                 argumentos = tool_use.input
 
-                # Si el cliente no dio su nombre pero tenemos el teléfono, inyectarlo
                 if nombre == "buscar_cliente_por_telefono" and "telefono" not in argumentos and telefono:
                     argumentos["telefono"] = telefono
+
+                # Inyectar telefono del cliente en cotizaciones
+                if nombre == "generar_cotizacion" and telefono:
+                    argumentos.setdefault("cliente_telefono", telefono)
 
                 logger.info(f"Ejecutando herramienta: {nombre}({json.dumps(argumentos, ensure_ascii=False)})")
 
@@ -171,19 +173,20 @@ async def _llamar_claude(
 
                 logger.info(f"Resultado {nombre}: exito={resultado.get('exito')}")
 
+                # Capturar ruta del PDF si se genero una cotizacion
+                if nombre == "generar_cotizacion" and resultado.get("exito") and resultado.get("ruta_pdf"):
+                    pdf_path = resultado["ruta_pdf"]
+
                 resultados_herramientas.append({
                     "type": "tool_result",
                     "tool_use_id": tool_use.id,
                     "content": json.dumps(resultado, ensure_ascii=False, default=str),
                 })
 
-            # Devolver los resultados a Claude para que genere la respuesta final
             mensajes_actuales.append({
                 "role": "user",
                 "content": resultados_herramientas,
             })
-
-            # Siguiente iteración → Claude procesa los resultados
             continue
 
         # ── Stop reason inesperado ────────────────────────────────────────────

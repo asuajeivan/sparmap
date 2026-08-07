@@ -33,6 +33,10 @@ class ProveedorWhatsApp(ABC):
         """Envía un mensaje de texto. Retorna True si fue exitoso."""
         ...
 
+    async def enviar_documento(self, telefono: str, ruta_archivo: str, nombre: str = "", caption: str = "") -> bool:
+        """Envía un documento/PDF. Retorna True si fue exitoso. Override en subclases."""
+        return False
+
     async def validar_webhook(self, request: Request) -> dict | int | None:
         """Verificación GET del webhook (solo Meta la requiere). Retorna respuesta o None."""
         return None

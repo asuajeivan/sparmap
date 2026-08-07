@@ -4,7 +4,10 @@
       "WebFetch(domain:sparmap.com.ve)",
       "WebFetch(domain:www.odoo.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "Bash(python tests/test_local.py)"
+      "Bash(python tests/test_local.py)",
+      "Bash(mkdir -p \"C:/Users/asuaj/Downloads/Ilu Agent/sparmap/agent/assets\")",
+      "Bash(cp \"C:/Users/asuaj/Downloads/SPARMAP, C.A.svg\" \"C:/Users/asuaj/Downloads/Ilu Agent/sparmap/agent/assets/logo.svg\")",
+      "Bash(pip install:*)"
     ]
   }
 }

@@ -56,9 +56,8 @@
 ### 7. Proveedores de WhatsApp
 - [x] agent/providers/base.py — interfaz comun
 - [x] agent/providers/__init__.py — factory de proveedores
-- [x] agent/providers/whapi.py — adaptador Whapi.cloud (recomendado)
 - [x] agent/providers/meta.py — adaptador Meta Cloud API
-- [x] agent/providers/twilio.py — adaptador Twilio
+- [x] agent/providers/twilio.py — adaptador Twilio (activo)
 
 ### 8. Documentacion tecnica
 - [x] Modelo entidad-relacion Odoo v17 documentado (memory/odoo-modelo-datos.md)
@@ -81,18 +80,17 @@
 - [ ] Probar direccion y horario ("donde quedan?")
 - [ ] Ajustar prompts si las respuestas no son las esperadas
 
-### 11. Proveedor de WhatsApp (Whapi.cloud)
-- [ ] Crear cuenta en whapi.cloud
-- [ ] Vincular numero de WhatsApp (escanear QR)
-- [ ] Obtener WHAPI_TOKEN
-- [ ] Configurar WHAPI_TOKEN en .env
-- [ ] Configurar webhook URL en panel de Whapi
+### 11. Proveedor de WhatsApp (Twilio)
+- [ ] Configurar TWILIO_ACCOUNT_SID en .env
+- [ ] Configurar TWILIO_AUTH_TOKEN en .env
+- [ ] Configurar TWILIO_PHONE_NUMBER en .env
+- [ ] Configurar webhook URL en panel de Twilio
 
 ### 12. Deploy
 - [ ] Elegir plataforma (Railway, Render, VPS)
 - [ ] Configurar variables de entorno en produccion
 - [ ] Deploy del contenedor Docker
-- [ ] Configurar URL del webhook en Whapi con la URL publica
+- [ ] Configurar URL del webhook en Twilio con la URL publica
 - [ ] Migrar base de datos a PostgreSQL (produccion)
 - [ ] Verificar que el webhook recibe mensajes
 - [ ] Prueba end-to-end: enviar mensaje real por WhatsApp
@@ -110,7 +108,7 @@
 | Tema | Decision |
 |---|---|
 | Motor IA | Claude Sonnet 4.6 (Anthropic API) |
-| Proveedor WhatsApp | Whapi.cloud (recomendado) |
+| Proveedor WhatsApp | Twilio |
 | ERP / Inventario | Odoo v17 via XML-RPC |
 | Base de datos agente | SQLite (dev) / PostgreSQL (prod) |
 | Framework web | FastAPI + uvicorn |
