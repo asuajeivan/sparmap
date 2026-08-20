@@ -22,10 +22,12 @@ class ProveedorTwilio(ProveedorWhatsApp):
     async def parsear_webhook(self, request: Request) -> list[MensajeEntrante]:
         """Parsea el payload form-encoded de Twilio."""
         form = await request.form()
+        logger.debug(f"Twilio webhook payload: {dict(form)}")
         texto = form.get("Body", "")
         telefono = form.get("From", "").replace("whatsapp:", "")
         mensaje_id = form.get("MessageSid", "")
         if not texto:
+            logger.debug(f"Webhook sin Body — probablemente status callback (SmsStatus={form.get('SmsStatus', form.get('MessageStatus', 'N/A'))})")
             return []
         return [MensajeEntrante(
             telefono=telefono,
