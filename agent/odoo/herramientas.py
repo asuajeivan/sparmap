@@ -379,6 +379,94 @@ def consultar_facturas_pendientes(partner_id: int) -> dict:
 
 
 # ═══════════════════════════════════════════════════════════════
+# CRM — LEAD AUTOMATICO POR COTIZACION
+# ═══════════════════════════════════════════════════════════════
+
+def _obtener_stage_solicitudes() -> int | None:
+    """Busca el stage_id de 'Solicitudes' en crm.stage. Retorna None si no existe."""
+    if not _odoo or not _odoo.esta_disponible():
+        return None
+    stages = _odoo.llamar(
+        "crm.stage", "search_read",
+        [[["name", "ilike", "Solicitudes"]]],
+        {"fields": ["id"], "limit": 1},
+    )
+    if stages:
+        return stages[0]["id"]
+    # Fallback: primera etapa del pipeline
+    stages = _odoo.llamar(
+        "crm.stage", "search_read",
+        [[]],
+        {"fields": ["id"], "limit": 1, "order": "sequence asc"},
+    )
+    return stages[0]["id"] if stages else None
+
+
+def _buscar_o_crear_partner(nombre: str, telefono: str) -> int | None:
+    """Busca un partner por telefono. Si no existe, lo crea."""
+    if not _odoo or not _odoo.esta_disponible():
+        return None
+    telefono_limpio = telefono.replace("+", "").replace(" ", "").replace("-", "")
+    partners = _odoo.llamar(
+        "res.partner", "search_read",
+        [["|", ["phone", "like", telefono_limpio[-9:]], ["mobile", "like", telefono_limpio[-9:]]]],
+        {"fields": ["id"], "limit": 1},
+    )
+    if partners:
+        return partners[0]["id"]
+    # Crear partner nuevo
+    partner_id = _odoo.llamar("res.partner", "create", [{"name": nombre, "phone": telefono}])
+    return partner_id
+
+
+def _crear_lead_cotizacion(
+    productos_cotizacion: list[dict],
+    total: float,
+    cliente_nombre: str = "",
+    cliente_telefono: str = "",
+):
+    """Crea un lead en crm.lead en la etapa Solicitudes al generar una cotizacion."""
+    if not _odoo or not _odoo.esta_disponible():
+        return
+
+    stage_id = _obtener_stage_solicitudes()
+
+    # Armar descripcion con los productos cotizados
+    lineas = [f"- {p['cantidad']}x {p['nombre']} @ ${p['precio']:.2f}" for p in productos_cotizacion]
+    descripcion = "Productos cotizados:\n" + "\n".join(lineas) + f"\n\nTotal: ${total:,.2f}"
+
+    nombre_lead = f"Cotización WhatsApp: {cliente_nombre or cliente_telefono}"
+
+    vals = {
+        "name": nombre_lead,
+        "phone": cliente_telefono,
+        "contact_name": cliente_nombre or "Cliente WhatsApp",
+        "description": descripcion,
+        "type": "lead",
+        "expected_revenue": total,
+    }
+    if stage_id:
+        vals["stage_id"] = stage_id
+
+    # Vincular partner si existe o crear uno
+    if cliente_telefono:
+        partner_id = _buscar_o_crear_partner(
+            cliente_nombre or "Cliente WhatsApp", cliente_telefono,
+        )
+        if partner_id:
+            vals["partner_id"] = partner_id
+
+    try:
+        lead_id = _odoo.llamar("crm.lead", "create", [vals])
+        if lead_id:
+            logger.info(f"Lead CRM creado: ID={lead_id} — {nombre_lead}")
+        else:
+            logger.error("No se pudo crear el lead en CRM")
+    except Exception as e:
+        logger.error(f"Error creando lead CRM: {e}")
+
+
+# ═══════════════════════════════════════════════════════════════
 # COTIZACION PDF
 # ═══════════════════════════════════════════════════════════════
 
@@ -457,6 +545,14 @@ def generar_cotizacion(productos: list[dict], cliente_nombre: str = "", cliente_
     )
 
     total = sum(p["precio"] * p["cantidad"] for p in productos_cotizacion)
+
+    # Crear lead en CRM (etapa "Solicitudes")
+    _crear_lead_cotizacion(
+        productos_cotizacion=productos_cotizacion,
+        total=total,
+        cliente_nombre=cliente_nombre,
+        cliente_telefono=cliente_telefono,
+    )
 
     resultado = {
         "exito": True,

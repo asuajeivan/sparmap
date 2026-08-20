@@ -64,7 +64,7 @@ class ProveedorWhapi(ProveedorWhatsApp):
     async def enviar_mensaje(self, telefono: str, mensaje: str) -> bool:
         """Envia mensaje de texto via Whapi.cloud."""
         if not self.token:
-            logger.warning("WHAPI_TOKEN no configurado")
+            logger.error("WHAPI_TOKEN no configurado — no se puede enviar mensaje")
             return False
 
         chat_id = telefono if "@" in telefono else f"{telefono}@s.whatsapp.net"
