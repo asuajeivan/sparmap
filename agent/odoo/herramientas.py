@@ -427,9 +427,11 @@ def _crear_lead_cotizacion(
 ):
     """Crea un lead en crm.lead en la etapa Solicitudes al generar una cotizacion."""
     if not _odoo or not _odoo.esta_disponible():
+        logger.warning("CRM lead no creado: Odoo no disponible")
         return
 
     stage_id = _obtener_stage_solicitudes()
+    logger.info(f"CRM stage_id para Solicitudes: {stage_id}")
 
     # Armar descripcion con los productos cotizados
     lineas = [f"- {p['cantidad']}x {p['nombre']} @ ${p['precio']:.2f}" for p in productos_cotizacion]
@@ -442,7 +444,7 @@ def _crear_lead_cotizacion(
         "phone": cliente_telefono,
         "contact_name": cliente_nombre or "Cliente WhatsApp",
         "description": descripcion,
-        "type": "lead",
+        "type": "opportunity",
         "expected_revenue": total,
     }
     if stage_id:
@@ -455,15 +457,18 @@ def _crear_lead_cotizacion(
         )
         if partner_id:
             vals["partner_id"] = partner_id
+        logger.info(f"CRM partner_id: {partner_id}")
+
+    logger.info(f"Creando lead CRM con vals: {vals}")
 
     try:
         lead_id = _odoo.llamar("crm.lead", "create", [vals])
         if lead_id:
             logger.info(f"Lead CRM creado: ID={lead_id} — {nombre_lead}")
         else:
-            logger.error("No se pudo crear el lead en CRM")
+            logger.error("No se pudo crear el lead en CRM — create retorno None/False")
     except Exception as e:
-        logger.error(f"Error creando lead CRM: {e}")
+        logger.error(f"Error creando lead CRM: {e}", exc_info=True)
 
 
 # ═══════════════════════════════════════════════════════════════
