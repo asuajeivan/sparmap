@@ -206,30 +206,28 @@ def buscar_cliente_por_telefono(telefono: str) -> dict:
     }
 
 
-def crear_lead(nombre_contacto: str, telefono: str, interes: str, notas: str = "") -> dict:
+def registrar_cliente_interesado(nombre_contacto: str, telefono: str, interes: str, canal: str = "WhatsApp") -> dict:
     """
-    Registra un lead/oportunidad en el CRM de Odoo.
+    Registra un cliente interesado como contacto en Odoo.
     Úsalo cuando un cliente nuevo pide información o quiere que lo contacten.
     """
     if not _odoo or not _odoo.esta_disponible():
         return _sin_odoo()
 
-    lead_id = _odoo.llamar(
-        "crm.lead", "create",
-        [{
-            "name": f"WhatsApp: {nombre_contacto} — {interes[:50]}",
-            "phone": telefono,
-            "description": f"Interés: {interes}\n\nNotas: {notas}".strip(),
-            "type": "lead",
-        }]
-    )
+    partner_id = _buscar_o_crear_partner(nombre_contacto, telefono, canal)
 
-    if not lead_id:
-        return {"exito": False, "error": "No se pudo registrar el lead."}
+    if not partner_id:
+        return {"exito": False, "error": "No se pudo registrar el cliente."}
+
+    # Actualizar notas del partner con el interes
+    _odoo.llamar("res.partner", "write", [[partner_id], {
+        "comment": f"Canal: {canal}\nInterés: {interes}",
+    }])
+
     return {
         "exito": True,
-        "datos": {"lead_id": lead_id},
-        "mensaje": f"Lead registrado con ID {lead_id}. El equipo de ventas se comunicará contigo pronto."
+        "datos": {"partner_id": partner_id},
+        "mensaje": f"Cliente registrado. El equipo de ventas se comunicará contigo pronto."
     }
 
 
@@ -379,31 +377,11 @@ def consultar_facturas_pendientes(partner_id: int) -> dict:
 
 
 # ═══════════════════════════════════════════════════════════════
-# CRM — LEAD AUTOMATICO POR COTIZACION
+# VENTAS — PRESUPUESTO AUTOMATICO POR COTIZACION
 # ═══════════════════════════════════════════════════════════════
 
-def _obtener_stage_solicitudes() -> int | None:
-    """Busca el stage_id de 'Solicitudes' en crm.stage. Retorna None si no existe."""
-    if not _odoo or not _odoo.esta_disponible():
-        return None
-    stages = _odoo.llamar(
-        "crm.stage", "search_read",
-        [[["name", "ilike", "Solicitudes"]]],
-        {"fields": ["id"], "limit": 1},
-    )
-    if stages:
-        return stages[0]["id"]
-    # Fallback: primera etapa del pipeline
-    stages = _odoo.llamar(
-        "crm.stage", "search_read",
-        [[]],
-        {"fields": ["id"], "limit": 1, "order": "sequence asc"},
-    )
-    return stages[0]["id"] if stages else None
-
-
-def _buscar_o_crear_partner(nombre: str, telefono: str) -> int | None:
-    """Busca un partner por telefono. Si no existe, lo crea."""
+def _buscar_o_crear_partner(nombre: str, telefono: str, canal: str = "WhatsApp") -> int | None:
+    """Busca un partner por telefono. Si no existe, lo crea con el canal de origen."""
     if not _odoo or not _odoo.esta_disponible():
         return None
     telefono_limpio = telefono.replace("+", "").replace(" ", "").replace("-", "")
@@ -414,61 +392,96 @@ def _buscar_o_crear_partner(nombre: str, telefono: str) -> int | None:
     )
     if partners:
         return partners[0]["id"]
-    # Crear partner nuevo
-    partner_id = _odoo.llamar("res.partner", "create", [{"name": nombre, "phone": telefono}])
+    # Crear partner nuevo con comentario del canal de origen
+    partner_id = _odoo.llamar("res.partner", "create", [{
+        "name": nombre,
+        "phone": telefono,
+        "comment": f"Canal: {canal}",
+    }])
     return partner_id
 
 
-def _crear_lead_cotizacion(
+def _obtener_o_crear_utm_source(nombre: str) -> int | None:
+    """Busca o crea un utm.source para tracking del canal de origen."""
+    if not _odoo or not _odoo.esta_disponible():
+        return None
+    sources = _odoo.llamar(
+        "utm.source", "search_read",
+        [[["name", "=", nombre]]],
+        {"fields": ["id"], "limit": 1},
+    )
+    if sources:
+        return sources[0]["id"]
+    try:
+        source_id = _odoo.llamar("utm.source", "create", [{"name": nombre}])
+        logger.info(f"UTM source creado: {nombre} (ID={source_id})")
+        return source_id
+    except Exception as e:
+        logger.warning(f"No se pudo crear utm.source '{nombre}': {e}")
+        return None
+
+
+def _crear_presupuesto_venta(
     productos_cotizacion: list[dict],
     total: float,
     cliente_nombre: str = "",
     cliente_telefono: str = "",
+    canal: str = "WhatsApp",
 ):
-    """Crea un lead en crm.lead en la etapa Solicitudes al generar una cotizacion."""
+    """Crea un presupuesto (sale.order en borrador) al generar una cotizacion."""
     if not _odoo or not _odoo.esta_disponible():
-        logger.warning("CRM lead no creado: Odoo no disponible")
+        logger.warning("Presupuesto no creado: Odoo no disponible")
         return
 
-    stage_id = _obtener_stage_solicitudes()
-    logger.info(f"CRM stage_id para Solicitudes: {stage_id}")
-
-    # Armar descripcion con los productos cotizados
-    lineas = [f"- {p['cantidad']}x {p['nombre']} @ ${p['precio']:.2f}" for p in productos_cotizacion]
-    descripcion = "Productos cotizados:\n" + "\n".join(lineas) + f"\n\nTotal: ${total:,.2f}"
-
-    nombre_lead = f"Cotización WhatsApp: {cliente_nombre or cliente_telefono}"
-
-    vals = {
-        "name": nombre_lead,
-        "phone": cliente_telefono,
-        "contact_name": cliente_nombre or "Cliente WhatsApp",
-        "description": descripcion,
-        "type": "opportunity",
-        "expected_revenue": total,
-    }
-    if stage_id:
-        vals["stage_id"] = stage_id
-
-    # Vincular partner si existe o crear uno
+    # Buscar o crear partner
+    partner_id = None
     if cliente_telefono:
         partner_id = _buscar_o_crear_partner(
-            cliente_nombre or "Cliente WhatsApp", cliente_telefono,
+            cliente_nombre or "Cliente WhatsApp", cliente_telefono, canal,
         )
-        if partner_id:
-            vals["partner_id"] = partner_id
-        logger.info(f"CRM partner_id: {partner_id}")
+        logger.info(f"Presupuesto partner_id: {partner_id}")
 
-    logger.info(f"Creando lead CRM con vals: {vals}")
+    if not partner_id:
+        logger.error("No se pudo crear presupuesto: sin partner_id")
+        return
+
+    # Armar lineas del pedido
+    order_lines = [
+        (0, 0, {
+            "product_id": p["product_id"],
+            "product_uom_qty": p["cantidad"],
+            "price_unit": p["precio"],
+        })
+        for p in productos_cotizacion
+    ]
+
+    vals = {
+        "partner_id": partner_id,
+        "order_line": order_lines,
+    }
+
+    # Tracking del canal de origen (utm.source)
+    source_id = _obtener_o_crear_utm_source(canal)
+    if source_id:
+        vals["source_id"] = source_id
+
+    logger.info(f"Creando presupuesto sale.order con {len(order_lines)} lineas, canal={canal}")
 
     try:
-        lead_id = _odoo.llamar("crm.lead", "create", [vals])
-        if lead_id:
-            logger.info(f"Lead CRM creado: ID={lead_id} — {nombre_lead}")
+        order_id = _odoo.llamar("sale.order", "create", [vals])
+        if order_id:
+            # Leer numero asignado
+            pedido = _odoo.llamar(
+                "sale.order", "read",
+                [[order_id]],
+                {"fields": ["name", "amount_total"]},
+            )
+            numero = pedido[0]["name"] if pedido else f"ID-{order_id}"
+            logger.info(f"Presupuesto creado: {numero} (ID={order_id}) — canal: {canal}")
         else:
-            logger.error("No se pudo crear el lead en CRM — create retorno None/False")
+            logger.error("No se pudo crear el presupuesto — create retorno None/False")
     except Exception as e:
-        logger.error(f"Error creando lead CRM: {e}", exc_info=True)
+        logger.error(f"Error creando presupuesto: {e}", exc_info=True)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -551,12 +564,13 @@ def generar_cotizacion(productos: list[dict], cliente_nombre: str = "", cliente_
 
     total = sum(p["precio"] * p["cantidad"] for p in productos_cotizacion)
 
-    # Crear lead en CRM (etapa "Solicitudes")
-    _crear_lead_cotizacion(
+    # Crear presupuesto en modulo de Ventas (sale.order en borrador)
+    _crear_presupuesto_venta(
         productos_cotizacion=productos_cotizacion,
         total=total,
         cliente_nombre=cliente_nombre,
         cliente_telefono=cliente_telefono,
+        canal="WhatsApp",
     )
 
     resultado = {

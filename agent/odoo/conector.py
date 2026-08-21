@@ -12,9 +12,9 @@ Requiere en .env:
     ODOO_API_KEY=tu_api_key_de_odoo
 
 El usuario de Odoo debe tener permisos mínimos:
-    - Ventas: Leer (para productos y pedidos)
+    - Ventas: Crear/Leer (para productos, pedidos y presupuestos)
     - Inventario: Leer (para stock)
-    - CRM: Crear/Leer (para leads)
+    - Contactos: Crear/Leer (para clientes)
     - Contabilidad: Leer (para facturas — opcional)
 """
 
