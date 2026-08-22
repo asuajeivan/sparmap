@@ -60,7 +60,7 @@ def obtener_info_tienda() -> dict:
     """Retorna la informacion de contacto y ubicacion."""
     return {
         "direccion": "Local 05, C.C Rosita, entre Av 39 y 40, C. 31, Acarigua 3301, Portuguesa",
-        "telefono": "0412-0402832",
+        "telefonos_asesores": ["+58 412-0399694", "+58 412-0402832"],
         "email": "Sparmap.llanos@gmail.com",
         "horario": {
             "lunes_viernes": "8:00 a.m. - 5:00 p.m.",

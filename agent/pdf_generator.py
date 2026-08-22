@@ -42,7 +42,7 @@ COLOR_YELLOW = colors.HexColor("#ffc107")
 COMPANY_NAME = "SPARMAP, C.A."
 COMPANY_RIF = ""  # Se llena desde Odoo si disponible
 COMPANY_ADDRESS = "Local 05, C.C Rosita, entre Av 39 y 40, C. 31, Acarigua 3301, Portuguesa"
-COMPANY_PHONE = "0412-0402832"
+COMPANY_PHONE = "+58 412-0399694 / +58 412-0402832"
 COMPANY_EMAIL = "Sparmap.llanos@gmail.com"
 COMPANY_WEB = "https://sparmap.com.ve/"
 
@@ -310,7 +310,7 @@ def generar_cotizacion_pdf(
     elements.append(Spacer(1, 8))
     elements.append(Paragraph(
         "Precios en USD. Cotización válida por 3 días hábiles. "
-        "Para confirmar, comuníquese al 0412-0402832.",
+        "Para confirmar, comuníquese al +58 412-0399694 o +58 412-0402832.",
         styles["CompanyInfo"],
     ))
     elements.append(Paragraph(

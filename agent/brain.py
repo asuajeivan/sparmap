@@ -29,7 +29,7 @@ def cargar_system_prompt() -> str:
 
 def obtener_mensaje_error() -> str:
     config = cargar_config_prompts()
-    return config.get("error_message", "Estoy teniendo problemas tecnicos. Intenta de nuevo en unos minutos o llama al 0412-0402832.")
+    return config.get("error_message", "Estoy teniendo problemas tecnicos. Intenta de nuevo en unos minutos o contacta al +58 412-0399694 o +58 412-0402832.")
 
 
 def obtener_mensaje_fallback() -> str:
