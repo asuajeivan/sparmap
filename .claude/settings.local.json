@@ -7,7 +7,9 @@
       "Bash(python tests/test_local.py)",
       "Bash(mkdir -p \"C:/Users/asuaj/Downloads/Ilu Agent/sparmap/agent/assets\")",
       "Bash(cp \"C:/Users/asuaj/Downloads/SPARMAP, C.A.svg\" \"C:/Users/asuaj/Downloads/Ilu Agent/sparmap/agent/assets/logo.svg\")",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''agent/brain_gemini.py''\\).read\\(\\)\\); print\\(''brain_gemini.py: OK''\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''agent/main.py''\\).read\\(\\)\\); print\\(''main.py: OK''\\)\")"
     ]
   }
 }

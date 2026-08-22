@@ -19,10 +19,15 @@ from apscheduler.triggers.cron import CronTrigger
 from agent.memory import inicializar_db, guardar_mensaje, obtener_historial
 from agent.providers import obtener_proveedor
 
-# Usar brain_odoo si la integración Odoo está activada, sino brain normal
+# Seleccionar el cerebro según AI_PROVIDER y ODOO_ENABLED
 ODOO_ENABLED = os.getenv("ODOO_ENABLED", "false").lower() == "true"
+AI_PROVIDER = os.getenv("AI_PROVIDER", "anthropic").lower()
+
 if ODOO_ENABLED:
-    from agent.brain_odoo import generar_respuesta
+    if AI_PROVIDER == "gemini":
+        from agent.brain_gemini import generar_respuesta
+    else:
+        from agent.brain_odoo import generar_respuesta
 else:
     from agent.brain import generar_respuesta
 
@@ -74,6 +79,7 @@ async def lifespan(app: FastAPI):
     logger.info("Base de datos inicializada")
     logger.info(f"Servidor AgentKit corriendo en puerto {PORT}")
     logger.info(f"Proveedor de WhatsApp: {proveedor.__class__.__name__}")
+    logger.info(f"Proveedor de IA: {AI_PROVIDER}")
 
     # Inicializar integración Odoo si está activada
     if ODOO_ENABLED:
