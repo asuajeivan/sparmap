@@ -18,6 +18,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from agent.memory import inicializar_db, guardar_mensaje, obtener_historial
 from agent.providers import obtener_proveedor
+from agent.respuestas_rapidas import intentar_respuesta_rapida
 
 # Seleccionar el cerebro según AI_PROVIDER y ODOO_ENABLED
 ODOO_ENABLED = os.getenv("ODOO_ENABLED", "false").lower() == "true"
@@ -157,7 +158,13 @@ async def webhook_handler(request: Request):
             logger.info(f"Mensaje de {msg.telefono}: {msg.texto}")
 
             historial = await obtener_historial(msg.telefono)
-            respuesta = await generar_respuesta(msg.texto, historial, telefono=msg.telefono)
+
+            # Intentar respuesta rapida (sin API) para ahorrar creditos
+            respuesta = intentar_respuesta_rapida(msg.texto, historial)
+            if respuesta:
+                logger.info(f"Respuesta rapida (sin API) a {msg.telefono}")
+            else:
+                respuesta = await generar_respuesta(msg.texto, historial, telefono=msg.telefono)
 
             # Manejar respuesta con PDF (cotizacion)
             if isinstance(respuesta, dict):

@@ -179,7 +179,7 @@ async def _llamar_gemini(
 
     config = types.GenerateContentConfig(
         system_instruction=system_prompt,
-        max_output_tokens=1024,
+        max_output_tokens=800,
         temperature=0.7,
     )
     if herramientas:
