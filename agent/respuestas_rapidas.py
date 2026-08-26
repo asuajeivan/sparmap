@@ -105,6 +105,64 @@ _PATRONES_CONTACTO = {
     "numero de telefono", "whatsapp", "vendedor", "asesor",
 }
 
+# ── Palabras clave del dominio (filtro de relevancia) ────────────────────────
+# Si el mensaje NO contiene ninguna de estas palabras Y no es un saludo/horario/etc,
+# se considera fuera de contexto y se responde sin consumir API.
+
+_PALABRAS_DOMINIO = {
+    # Productos electricos
+    "cable", "cables", "cableado", "breaker", "breakers", "interruptor", "interruptores",
+    "tomacorriente", "tomacorrientes", "enchufe", "enchufes", "roseta", "rosetas",
+    "transformador", "transformadores", "medidor", "medidores", "contador",
+    "tuberia", "tuberias", "tubo", "tubos", "conduit", "canaleta", "canaletas",
+    "caja", "cajas", "tablero", "tableros", "panel", "paneles",
+    "fusible", "fusibles", "relay", "rele", "contactor", "contactores",
+    "lampara", "lamparas", "bombillo", "bombillos", "foco", "focos", "led", "leds",
+    "luminaria", "luminarias", "reflector", "reflectores", "spot",
+    "conector", "conectores", "terminal", "terminales", "bornera", "borneras",
+    "cinta", "aislante", "termoencogible", "amarres",
+    "motor", "motores", "bomba", "bombas", "generador", "generadores",
+    "inversor", "inversores", "ups", "regulador", "reguladores", "estabilizador",
+    "variador", "arrancador", "arrancadores",
+    "sensor", "sensores", "detector", "detectores", "alarma", "alarmas",
+    "puesta a tierra", "tierra", "polo", "polos", "fase", "fases", "neutro",
+    "voltaje", "amperaje", "voltio", "voltios", "amperio", "amperios", "watt", "watts",
+    "monofasico", "trifasico", "bifasico", "220", "110", "440",
+    "barra", "barras", "riel", "riel din", "din",
+    "encendido", "apagado", "dimmer", "dimer", "switch",
+    "corriente", "electrico", "electrica", "electricos", "electricas", "electricidad",
+    "instalacion", "instalaciones", "acometida", "empalme",
+    "proteccion", "diferencial", "termomagnetico",
+    "pvc", "emt", "flexible", "rigido", "awg", "thw", "thhn",
+    "planta", "planta electrica", "transferencia",
+    "poste", "cruceta", "aislador", "aisladores", "herraje", "herrajes",
+    "solucion", "soluciones", "suministro", "suministros", "material", "materiales",
+    "ferreteria", "ingenieria", "proyecto", "proyectos",
+    # Intenciones de compra / consulta
+    "precio", "precios", "costo", "costos", "cuanto", "cuanto cuesta", "cuanto vale",
+    "disponible", "disponibilidad", "tienen", "hay", "stock", "inventario",
+    "cotizacion", "cotizar", "cotizame", "presupuesto", "factura",
+    "comprar", "compra", "necesito", "busco", "quiero", "pedido", "pedir",
+    "envio", "envian", "despacho", "despachan", "delivery",
+    "catalogo", "lista", "productos", "producto", "marca", "marcas",
+    "garantia", "ficha tecnica", "especificaciones",
+    "servicio", "reparacion", "mantenimiento",
+    "obra", "construccion", "residencial", "comercial", "industrial",
+    # Marca comunes del rubro
+    "schneider", "abb", "siemens", "legrand", "eaton", "general electric", "ge",
+    "bticino", "leviton", "camsco", "chint", "ls",
+}
+
+_RESPUESTA_FUERA_DE_CONTEXTO = (
+    "Somos *SPARMAP, C.A.*, especialistas en suministros electricos "
+    "e ingenieria en Acarigua.\n\n"
+    "Puedo ayudarte con:\n"
+    "- Consultar disponibilidad y precios de materiales electricos\n"
+    "- Generar cotizaciones al instante\n"
+    "- Informacion sobre nuestros productos y servicios\n\n"
+    "Necesitas algun material electrico?"
+)
+
 
 def _coincide(texto_normalizado: str, patrones: set) -> bool:
     """Verifica si el texto normalizado coincide con alguno de los patrones."""
@@ -115,6 +173,27 @@ def _coincide(texto_normalizado: str, patrones: set) -> bool:
     if len(texto_normalizado.split()) <= 5:
         for p in patrones:
             if p in texto_normalizado:
+                return True
+    return False
+
+
+def _es_relevante(texto_normalizado: str) -> bool:
+    """
+    Determina si un mensaje es relevante para el negocio (materiales electricos).
+    Busca palabras del dominio en el texto. Si no encuentra ninguna, es irrelevante.
+    """
+    palabras = texto_normalizado.split()
+    for palabra in palabras:
+        if palabra in _PALABRAS_DOMINIO:
+            return True
+    # Tambien buscar frases de 2-3 palabras (ej: "puesta a tierra", "riel din")
+    for i in range(len(palabras) - 1):
+        bigrama = f"{palabras[i]} {palabras[i+1]}"
+        if bigrama in _PALABRAS_DOMINIO:
+            return True
+        if i < len(palabras) - 2:
+            trigrama = f"{palabras[i]} {palabras[i+1]} {palabras[i+2]}"
+            if trigrama in _PALABRAS_DOMINIO:
                 return True
     return False
 
@@ -159,5 +238,13 @@ def intentar_respuesta_rapida(mensaje: str, historial: list[dict]) -> str | None
     if _coincide(norm, _PATRONES_CONTACTO):
         return _CONTACTO
 
-    # No es un mensaje simple → dejar que la API lo maneje
+    # ── Filtro de relevancia (Capa 1) ────────────────────────────────────────
+    # Si el mensaje no tiene palabras del dominio electrico, responder sin API.
+    # Excepciones: mensajes muy cortos/ambiguos (1-2 palabras) se dejan pasar
+    # para que la IA los maneje (podrian ser codigos de producto, abreviaciones, etc.)
+    palabras_msg = norm.split()
+    if len(palabras_msg) >= 3 and not _es_relevante(norm):
+        return _RESPUESTA_FUERA_DE_CONTEXTO
+
+    # Relevante o ambiguo → dejar que la API lo maneje
     return None
