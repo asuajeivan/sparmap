@@ -489,6 +489,20 @@ def _crear_presupuesto_venta(
 # COTIZACION PDF
 # ═══════════════════════════════════════════════════════════════
 
+def _nombres_coinciden(solicitado: str, resuelto: str) -> bool:
+    """Verifica que al menos la mitad de las palabras clave del nombre solicitado
+    aparezcan en el nombre resuelto de Odoo. Evita que un product_id equivocado
+    (ej: 'Bombillo LED' → 'Tablero Distribucion') pase sin validacion."""
+    solicitado_norm = _quitar_acentos(solicitado.lower())
+    resuelto_norm = _quitar_acentos(resuelto.lower())
+    # Palabras significativas (>2 chars o digitos)
+    palabras = [p for p in solicitado_norm.split() if len(p) > 2 or p.isdigit()]
+    if not palabras:
+        return True
+    coincidencias = sum(1 for p in palabras if p in resuelto_norm)
+    return coincidencias >= max(1, len(palabras) // 2)
+
+
 def generar_cotizacion(productos: list[dict], cliente_nombre: str = "", cliente_telefono: str = "") -> dict:
     """
     Genera una cotizacion PDF a partir de una lista de productos.
@@ -521,14 +535,22 @@ def generar_cotizacion(productos: list[dict], cliente_nombre: str = "", cliente_
             )
             if prod_data and prod_data[0].get("qty_available", 0) > 0:
                 prod = prod_data[0]
-                productos_cotizacion.append({
-                    "product_id": prod["id"],
-                    "nombre": prod["name"],
-                    "precio": prod["list_price"],
-                    "cantidad": cantidad,
-                })
-                continue
-            # Si el producto ya no tiene stock, caer al fuzzy search por nombre
+                # Validar que el producto resuelto coincida con lo solicitado
+                # Si Claude paso un product_id equivocado, caer al fuzzy search
+                if nombre and not _nombres_coinciden(nombre, prod["name"]):
+                    logger.warning(
+                        f"product_id={product_id} resolvio a '{prod['name']}' "
+                        f"pero se pidio '{nombre}' — cayendo a busqueda por nombre"
+                    )
+                else:
+                    productos_cotizacion.append({
+                        "product_id": prod["id"],
+                        "nombre": prod["name"],
+                        "precio": prod["list_price"],
+                        "cantidad": cantidad,
+                    })
+                    continue
+            # Si el producto ya no tiene stock o no coincide, caer al fuzzy search por nombre
 
         # Buscar producto en Odoo por nombre (fuzzy search)
         nombre_limpio = _quitar_acentos(nombre.strip())
