@@ -245,10 +245,13 @@ def intentar_respuesta_rapida(mensaje: str, historial: list[dict]) -> str | None
 
     # ── Filtro de relevancia (Capa 1) ────────────────────────────────────────
     # Si el mensaje no tiene palabras del dominio electrico, responder sin API.
-    # Excepciones: mensajes muy cortos/ambiguos (1-2 palabras) se dejan pasar
-    # para que la IA los maneje (podrian ser codigos de producto, abreviaciones, etc.)
+    # Excepciones:
+    #   - Mensajes muy cortos/ambiguos (1-2 palabras) se dejan pasar
+    #   - Si ya hay conversacion activa, el usuario puede estar continuando
+    #     un tema (ej: "me da el primero", "si dame ese") → dejar que la IA maneje
     palabras_msg = norm.split()
-    if len(palabras_msg) >= 3 and not _es_relevante(norm):
+    tiene_historial = len(historial) >= 4
+    if len(palabras_msg) >= 3 and not _es_relevante(norm) and not tiene_historial:
         return _RESPUESTA_FUERA_DE_CONTEXTO
 
     # Relevante o ambiguo → dejar que la API lo maneje
