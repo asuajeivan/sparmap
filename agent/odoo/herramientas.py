@@ -85,6 +85,7 @@ def buscar_producto(nombre: str) -> dict:
     # Solo devolver productos CON stock — los sin stock no existen para el cliente
     productos = [
         {
+            "id": p["id"],
             "nombre": p["name"],
             "precio": p["list_price"],
             "categoria": p["categ_id"][1] if p.get("categ_id") else "",
@@ -509,8 +510,27 @@ def generar_cotizacion(productos: list[dict], cliente_nombre: str = "", cliente_
     for item in productos:
         nombre = item.get("nombre", "")
         cantidad = item.get("cantidad", 1)
+        product_id = item.get("product_id")
 
-        # Buscar producto en Odoo (misma logica robusta que buscar_producto)
+        # Si tenemos product_id, leer directamente de Odoo (sin re-buscar)
+        if product_id:
+            prod_data = _odoo.llamar(
+                "product.product", "read",
+                [[product_id]],
+                {"fields": ["id", "name", "list_price", "qty_available"]},
+            )
+            if prod_data and prod_data[0].get("qty_available", 0) > 0:
+                prod = prod_data[0]
+                productos_cotizacion.append({
+                    "product_id": prod["id"],
+                    "nombre": prod["name"],
+                    "precio": prod["list_price"],
+                    "cantidad": cantidad,
+                })
+                continue
+            # Si el producto ya no tiene stock, caer al fuzzy search por nombre
+
+        # Buscar producto en Odoo por nombre (fuzzy search)
         nombre_limpio = _quitar_acentos(nombre.strip())
         # Separar por espacios, "/", "(", ")" y "-" para tokenizar bien
         # Conservar digitos sueltos (ej: "8" en "cable 8 AWG") porque son especificaciones criticas
@@ -803,7 +823,8 @@ HERRAMIENTAS_CLAUDE = [
             "Genera una cotización en PDF con los productos que el cliente solicita. "
             "IMPORTANTE: NO uses esta herramienta inmediatamente. Primero confirma con el cliente "
             "la lista de productos y cantidades. SOLO úsala después de que el cliente confirme. "
-            "Busca cada producto en Odoo, obtiene el precio real y genera el PDF. "
+            "SIEMPRE incluye el product_id de cada producto (obtenido de buscar_producto). "
+            "Esto garantiza que el PDF tenga exactamente el producto correcto y el precio real. "
             "Después de generar la cotización, el PDF se envía por WhatsApp."
         ),
         "input_schema": {
@@ -811,13 +832,17 @@ HERRAMIENTAS_CLAUDE = [
             "properties": {
                 "productos": {
                     "type": "array",
-                    "description": "Lista de productos con nombre y cantidad",
+                    "description": "Lista de productos con product_id, nombre y cantidad",
                     "items": {
                         "type": "object",
                         "properties": {
+                            "product_id": {
+                                "type": "integer",
+                                "description": "ID del producto en Odoo (obtenido de buscar_producto). SIEMPRE incluirlo."
+                            },
                             "nombre": {
                                 "type": "string",
-                                "description": "Nombre o descripcion del producto"
+                                "description": "Nombre del producto (respaldo si no hay product_id)"
                             },
                             "cantidad": {
                                 "type": "integer",
