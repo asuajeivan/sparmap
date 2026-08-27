@@ -513,8 +513,9 @@ def generar_cotizacion(productos: list[dict], cliente_nombre: str = "", cliente_
         # Buscar producto en Odoo (misma logica robusta que buscar_producto)
         nombre_limpio = _quitar_acentos(nombre.strip())
         # Separar por espacios, "/", "(", ")" y "-" para tokenizar bien
+        # Conservar digitos sueltos (ej: "8" en "cable 8 AWG") porque son especificaciones criticas
         import re
-        palabras = [p for p in re.split(r'[\s/\(\)\-]+', nombre_limpio) if len(p) > 1]
+        palabras = [p for p in re.split(r'[\s/\(\)\-]+', nombre_limpio) if len(p) > 1 or p.isdigit()]
         campos = ["id", "name", "list_price", "qty_available"]
         opts = {"fields": campos, "limit": 1, "order": "qty_available desc"}
         base_domain = [["active", "=", True], ["sale_ok", "=", True], ["qty_available", ">", 0]]
