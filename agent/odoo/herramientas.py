@@ -489,20 +489,6 @@ def _crear_presupuesto_venta(
 # COTIZACION PDF
 # ═══════════════════════════════════════════════════════════════
 
-def _nombres_coinciden(solicitado: str, resuelto: str) -> bool:
-    """Verifica que al menos la mitad de las palabras clave del nombre solicitado
-    aparezcan en el nombre resuelto de Odoo. Evita que un product_id equivocado
-    (ej: 'Bombillo LED' → 'Tablero Distribucion') pase sin validacion."""
-    solicitado_norm = _quitar_acentos(solicitado.lower())
-    resuelto_norm = _quitar_acentos(resuelto.lower())
-    # Palabras significativas (>2 chars o digitos)
-    palabras = [p for p in solicitado_norm.split() if len(p) > 2 or p.isdigit()]
-    if not palabras:
-        return True
-    coincidencias = sum(1 for p in palabras if p in resuelto_norm)
-    return coincidencias >= max(1, len(palabras) // 2)
-
-
 def generar_cotizacion(productos: list[dict], cliente_nombre: str = "", cliente_telefono: str = "") -> dict:
     """
     Genera una cotizacion PDF a partir de una lista de productos.
@@ -526,7 +512,7 @@ def generar_cotizacion(productos: list[dict], cliente_nombre: str = "", cliente_
         cantidad = item.get("cantidad", 1)
         product_id = item.get("product_id")
 
-        # Si tenemos product_id, leer directamente de Odoo (sin re-buscar)
+        # Si tenemos product_id, leer directamente de Odoo — 1:1 exacto
         if product_id:
             prod_data = _odoo.llamar(
                 "product.product", "read",
@@ -535,22 +521,14 @@ def generar_cotizacion(productos: list[dict], cliente_nombre: str = "", cliente_
             )
             if prod_data and prod_data[0].get("qty_available", 0) > 0:
                 prod = prod_data[0]
-                # Validar que el producto resuelto coincida con lo solicitado
-                # Si Claude paso un product_id equivocado, caer al fuzzy search
-                if nombre and not _nombres_coinciden(nombre, prod["name"]):
-                    logger.warning(
-                        f"product_id={product_id} resolvio a '{prod['name']}' "
-                        f"pero se pidio '{nombre}' — cayendo a busqueda por nombre"
-                    )
-                else:
-                    productos_cotizacion.append({
-                        "product_id": prod["id"],
-                        "nombre": prod["name"],
-                        "precio": prod["list_price"],
-                        "cantidad": cantidad,
-                    })
-                    continue
-            # Si el producto ya no tiene stock o no coincide, caer al fuzzy search por nombre
+                productos_cotizacion.append({
+                    "product_id": prod["id"],
+                    "nombre": prod["name"],
+                    "precio": prod["list_price"],
+                    "cantidad": cantidad,
+                })
+                continue
+            # Si el producto ya no tiene stock, caer al fuzzy search por nombre
 
         # Buscar producto en Odoo por nombre (fuzzy search)
         nombre_limpio = _quitar_acentos(nombre.strip())
@@ -845,9 +823,9 @@ HERRAMIENTAS_CLAUDE = [
             "Genera una cotización en PDF con los productos que el cliente solicita. "
             "IMPORTANTE: NO uses esta herramienta inmediatamente. Primero confirma con el cliente "
             "la lista de productos y cantidades. SOLO úsala después de que el cliente confirme. "
-            "SIEMPRE incluye el product_id de cada producto (obtenido de buscar_producto). "
-            "Esto garantiza que el PDF tenga exactamente el producto correcto y el precio real. "
-            "Después de generar la cotización, el PDF se envía por WhatsApp."
+            "CRITICO: SIEMPRE incluye el product_id EXACTO de cada producto (campo 'id' de buscar_producto). "
+            "El product_id determina 1:1 que producto y precio va en el PDF. "
+            "Si el cliente eligio productos de distintas busquedas, usa el id de CADA busqueda correspondiente — no los mezcles."
         ),
         "input_schema": {
             "type": "object",
@@ -872,7 +850,7 @@ HERRAMIENTAS_CLAUDE = [
                                 "default": 1
                             }
                         },
-                        "required": ["nombre"]
+                        "required": ["product_id", "nombre"]
                     }
                 },
                 "cliente_nombre": {

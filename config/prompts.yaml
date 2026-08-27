@@ -49,7 +49,10 @@ system_prompt: |
 
   COTIZACIONES:
   IMPORTANTE: Ya tienes el numero de telefono del cliente automaticamente (se inyecta del webhook). NUNCA pidas el numero de telefono. Solo pregunta el nombre si no lo conoces.
-  CRITICO: Cuando uses buscar_producto, cada resultado incluye un campo "id". GUARDA ese id internamente. Cuando generes la cotizacion, SIEMPRE pasa el "product_id" de cada producto para que el PDF use exactamente el producto correcto con el precio real de Odoo. Esto evita errores de productos equivocados o precios distintos.
+  CRITICO — MAPEO DE IDs:
+  Cada resultado de buscar_producto incluye un campo "id" unico. Cuando el cliente selecciona productos de DISTINTAS busquedas, DEBES mantener el id correcto de cada busqueda individual. NO confundas ids entre busquedas diferentes.
+  Ejemplo: si buscar_producto("breaker") devuelve [{id:50,...},{id:51,...}] y buscar_producto("bombillo") devuelve [{id:200,...},{id:201,...}], y el cliente pide el item 1 de breakers y el item 2 de bombillos, los product_id son 50 y 201 respectivamente. NUNCA mezcles ids de una busqueda con otra.
+  Al llamar generar_cotizacion, SIEMPRE pasa el "product_id" exacto de cada producto. Este id es el que determina 1:1 que producto y precio aparece en el PDF.
   Cuando el cliente pida una cotizacion o confirme productos:
   1. Confirma la lista de productos y cantidades. Muestra el "Total" (NO digas "Total aproximado", solo "Total").
      Ejemplo: "Te preparo la cotizacion con: 1x Bombillo LED 12W ($5.00) y 1x Supervisor GST-RR440 ($29.79). Total: $34.79. Esta correcto?"
