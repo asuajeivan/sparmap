@@ -382,17 +382,23 @@ def consultar_facturas_pendientes(partner_id: int) -> dict:
 # ═══════════════════════════════════════════════════════════════
 
 def _buscar_o_crear_partner(nombre: str, telefono: str, canal: str = "WhatsApp") -> int | None:
-    """Busca un partner por telefono. Si no existe, lo crea con el canal de origen."""
+    """Busca un partner por telefono. Si no existe, lo crea con el canal de origen.
+    Si existe pero el cliente dio un nombre diferente, actualiza el nombre."""
     if not _odoo or not _odoo.esta_disponible():
         return None
     telefono_limpio = telefono.replace("+", "").replace(" ", "").replace("-", "")
     partners = _odoo.llamar(
         "res.partner", "search_read",
         [["|", ["phone", "like", telefono_limpio[-9:]], ["mobile", "like", telefono_limpio[-9:]]]],
-        {"fields": ["id"], "limit": 1},
+        {"fields": ["id", "name"], "limit": 1},
     )
     if partners:
-        return partners[0]["id"]
+        partner_id = partners[0]["id"]
+        # Si el cliente dio un nombre y es diferente al almacenado, actualizarlo
+        if nombre and nombre.lower().strip() != partners[0]["name"].lower().strip():
+            _odoo.llamar("res.partner", "write", [[partner_id], {"name": nombre}])
+            logger.info(f"Partner {partner_id} nombre actualizado: '{partners[0]['name']}' → '{nombre}'")
+        return partner_id
     # Crear partner nuevo con comentario del canal de origen
     partner_id = _odoo.llamar("res.partner", "create", [{
         "name": nombre,
