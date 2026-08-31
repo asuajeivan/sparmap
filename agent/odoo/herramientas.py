@@ -54,7 +54,7 @@ def buscar_producto(nombre: str) -> dict:
     palabras = nombre_limpio.split()
     campos_busqueda = ["name", "list_price", "qty_available", "default_code", "categ_id"]
     opts = {"fields": campos_busqueda, "limit": 20, "order": "qty_available desc, name asc"}
-    base_domain = [["active", "=", True], ["sale_ok", "=", True]]
+    base_domain = [["active", "=", True], ["sale_ok", "=", True], ["qty_available", ">", 0]]
 
     # Buscar con AND (todas las palabras deben coincidir)
     dominio_and = list(base_domain)
@@ -534,7 +534,10 @@ def generar_cotizacion(productos: list[dict], cliente_nombre: str = "", cliente_
                     "cantidad": cantidad,
                 })
                 continue
-            # Si el producto ya no tiene stock, caer al fuzzy search por nombre
+            # Si el producto ya no tiene stock, reportarlo como no encontrado
+            no_encontrados.append(nombre or f"ID {product_id}")
+            logger.warning(f"Producto {product_id} sin stock al generar cotizacion")
+            continue
 
         # Buscar producto en Odoo por nombre (fuzzy search)
         nombre_limpio = _quitar_acentos(nombre.strip())
