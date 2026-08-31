@@ -512,6 +512,7 @@ def generar_cotizacion(productos: list[dict], cliente_nombre: str = "", cliente_
 
     productos_cotizacion = []
     no_encontrados = []
+    sin_stock = []
 
     for item in productos:
         nombre = item.get("nombre", "")
@@ -534,15 +535,14 @@ def generar_cotizacion(productos: list[dict], cliente_nombre: str = "", cliente_
                     "cantidad": cantidad,
                 })
                 continue
-            # Si el producto ya no tiene stock, reportarlo como no encontrado
-            no_encontrados.append(nombre or f"ID {product_id}")
+            # Producto sin stock — registrar para bloquear cotizacion
+            nombre_sin_stock = prod_data[0]["name"] if prod_data else (nombre or f"ID {product_id}")
+            sin_stock.append(nombre_sin_stock)
             logger.warning(f"Producto {product_id} sin stock al generar cotizacion")
             continue
 
         # Buscar producto en Odoo por nombre (fuzzy search)
         nombre_limpio = _quitar_acentos(nombre.strip())
-        # Separar por espacios, "/", "(", ")" y "-" para tokenizar bien
-        # Conservar digitos sueltos (ej: "8" en "cable 8 AWG") porque son especificaciones criticas
         import re
         palabras = [p for p in re.split(r'[\s/\(\)\-]+', nombre_limpio) if len(p) > 1 or p.isdigit()]
         campos = ["id", "name", "list_price", "qty_available"]
@@ -576,6 +576,24 @@ def generar_cotizacion(productos: list[dict], cliente_nombre: str = "", cliente_
             })
         else:
             no_encontrados.append(nombre)
+
+    # BLOQUEAR cotizacion si hay productos sin stock
+    if sin_stock:
+        disponibles = [
+            {"nombre": p["nombre"], "precio": p["precio"], "cantidad": p["cantidad"]}
+            for p in productos_cotizacion
+        ]
+        return {
+            "exito": False,
+            "error": (
+                f"No se puede generar la cotización porque los siguientes productos "
+                f"no tienen stock: {', '.join(sin_stock)}. "
+                f"Informa al cliente cuáles están disponibles y cuáles no."
+            ),
+            "sin_stock": sin_stock,
+            "disponibles": disponibles,
+            "no_encontrados": no_encontrados,
+        }
 
     if not productos_cotizacion:
         return {
@@ -834,7 +852,9 @@ HERRAMIENTAS_CLAUDE = [
             "la lista de productos y cantidades. SOLO úsala después de que el cliente confirme. "
             "CRITICO: SIEMPRE incluye el product_id EXACTO de cada producto (campo 'id' de buscar_producto). "
             "El product_id determina 1:1 que producto y precio va en el PDF. "
-            "Si el cliente eligio productos de distintas busquedas, usa el id de CADA busqueda correspondiente — no los mezcles."
+            "Si el cliente eligio productos de distintas busquedas, usa el id de CADA busqueda correspondiente — no los mezcles. "
+            "NUNCA incluyas productos sin stock (qty_available=0). Si un producto no tiene stock, "
+            "informale al cliente que no esta disponible — NO lo metas en la cotizacion."
         ),
         "input_schema": {
             "type": "object",
