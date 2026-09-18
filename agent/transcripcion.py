@@ -35,7 +35,7 @@ async def transcribir_audio(audio_bytes: bytes) -> str:
         from google.genai import types
 
         client = _get_client()
-        model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+        model = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 
         audio_part = types.Part.from_bytes(data=audio_bytes, mime_type="audio/ogg")
 
