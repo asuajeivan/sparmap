@@ -19,6 +19,7 @@ from apscheduler.triggers.cron import CronTrigger
 from agent.memory import inicializar_db, guardar_mensaje, obtener_historial
 from agent.providers import obtener_proveedor
 from agent.respuestas_rapidas import intentar_respuesta_rapida
+from agent.transcripcion import transcribir_audio
 
 # Seleccionar el cerebro según AI_PROVIDER y ODOO_ENABLED
 ODOO_ENABLED = os.getenv("ODOO_ENABLED", "false").lower() == "true"
@@ -152,6 +153,28 @@ async def webhook_handler(request: Request):
         mensajes = await proveedor.parsear_webhook(request)
 
         for msg in mensajes:
+            # Si es audio, transcribir antes de procesar
+            if not msg.es_propio and msg.audio_id and not msg.texto:
+                audio_bytes = None
+                if hasattr(proveedor, "descargar_media"):
+                    audio_bytes = await proveedor.descargar_media(msg.audio_id)
+                if audio_bytes:
+                    msg.texto = await transcribir_audio(audio_bytes)
+                    if msg.texto:
+                        logger.info(f"Audio transcrito de {msg.telefono}: {msg.texto}")
+                    else:
+                        await proveedor.enviar_mensaje(
+                            msg.telefono,
+                            "No pude entender el audio. ¿Podrías escribirme tu consulta por texto?"
+                        )
+                        continue
+                else:
+                    await proveedor.enviar_mensaje(
+                        msg.telefono,
+                        "No pude procesar el audio. ¿Podrías escribirme tu consulta por texto?"
+                    )
+                    continue
+
             if msg.es_propio or not msg.texto:
                 continue
 

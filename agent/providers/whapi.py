@@ -41,11 +41,15 @@ class ProveedorWhapi(ProveedorWhatsApp):
         for msg in mensajes:
             es_propio = msg.get("from_me", False)
             texto = ""
+            audio_id = ""
 
             if msg.get("type") == "text":
                 texto = msg.get("text", {}).get("body", "")
             elif msg.get("type") == "interactive":
                 texto = msg.get("interactive", {}).get("button_reply", {}).get("title", "")
+            elif msg.get("type") in ("audio", "voice"):
+                audio_data = msg.get("audio") or msg.get("voice") or {}
+                audio_id = audio_data.get("id", "")
 
             telefono = msg.get("chat_id", "").replace("@s.whatsapp.net", "")
 
@@ -57,6 +61,7 @@ class ProveedorWhapi(ProveedorWhatsApp):
                 texto=texto,
                 mensaje_id=msg.get("id", ""),
                 es_propio=es_propio,
+                audio_id=audio_id,
             ))
 
         return resultado
@@ -110,3 +115,20 @@ class ProveedorWhapi(ProveedorWhatsApp):
                 return False
             logger.info(f"PDF enviado via Whapi a {telefono}: {filename}")
             return True
+
+    async def descargar_media(self, media_id: str) -> bytes | None:
+        """Descarga un archivo media de Whapi por su ID. Retorna bytes o None."""
+        if not self.token or not media_id:
+            return None
+
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{WHAPI_BASE}/media/{media_id}",
+                headers={"Authorization": f"Bearer {self.token}"},
+                timeout=30.0,
+            )
+            if r.status_code == 200:
+                logger.info(f"Media descargado: {media_id} ({len(r.content)} bytes)")
+                return r.content
+            logger.error(f"Error descargando media {media_id}: {r.status_code}")
+            return None
