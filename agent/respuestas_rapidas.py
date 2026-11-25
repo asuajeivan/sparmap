@@ -9,6 +9,8 @@
 import re
 from datetime import datetime, timezone, timedelta
 
+from agent.escalamiento import NOMBRE_AGENTE
+
 # Zona horaria Venezuela (UTC-4)
 _VET = timezone(timedelta(hours=-4))
 
@@ -25,8 +27,9 @@ def _saludo_por_hora() -> str:
 # ── Respuestas predefinidas ──────────────────────────────────────────────────
 
 _BIENVENIDA = (
-    "{saludo}! Bienvenido/a a *SPARMAP, C.A.* — tu aliado en suministros "
-    "electricos e ingenieria en Acarigua.\n\n"
+    "{saludo}! Soy *" + NOMBRE_AGENTE + "*, el asistente virtual (inteligencia "
+    "artificial) de *SPARMAP, C.A.* — tu aliado en suministros electricos e "
+    "ingenieria en Acarigua.\n\n"
     "Por este chat puedes:\n"
     "- Consultar productos y disponibilidad\n"
     "- Conocer precios al instante\n"
@@ -64,8 +67,9 @@ _GRACIAS = (
     "https://sparmap.com.ve/shop"
 )
 
-_CONTACTO = (
-    "Puedes comunicarte con nuestro equipo de ventas:\n"
+CONTACTO = (
+    "Ya le avise a nuestro equipo de ventas y un asesor te va a escribir en breve.\n\n"
+    "Si prefieres, tambien puedes escribirles directo:\n"
     "*Asesor 1:* +58 412-0399694\n"
     "*Asesor 2:* +58 412-0402832\n\n"
     "O visitanos en tienda: Local 05, C.C Rosita, Acarigua."
@@ -106,8 +110,9 @@ _PATRONES_GRACIAS = {
 }
 
 _PATRONES_CONTACTO = {
-    "numero", "telefono", "contacto", "como los contacto",
-    "numero de telefono", "whatsapp", "vendedor", "asesor",
+    "numero", "telefono", "como los contacto", "numero de telefono",
+    "whatsapp", "vendedor", "asesor", "hablar con alguien",
+    "hablar con una persona", "una persona",
 }
 
 # ── Palabras clave del dominio (filtro de relevancia) ────────────────────────
@@ -146,6 +151,8 @@ _PALABRAS_DOMINIO = {
     # Intenciones de compra / consulta
     "precio", "precios", "costo", "costos", "cuanto", "cuanto cuesta", "cuanto vale",
     "disponible", "disponibilidad", "tienen", "hay", "stock", "inventario",
+    "tiene", "tienes", "tendra", "tendran", "venden", "vende", "manejan", "consigo",
+    "amp", "amps", "kva", "hp", "mm",
     "cotizacion", "cotizar", "cotizame", "presupuesto", "factura",
     "comprar", "compra", "necesito", "busco", "quiero", "pedido", "pedir",
     "envio", "envian", "despacho", "despachan", "delivery",
@@ -173,11 +180,12 @@ def _coincide(texto_normalizado: str, patrones: set) -> bool:
     """Verifica si el texto normalizado coincide con alguno de los patrones."""
     if texto_normalizado in patrones:
         return True
-    # Tambien verificar si el texto completo CONTIENE un patron
+    # Tambien verificar si el texto CONTIENE un patron como palabra/frase completa
+    # (no como sub-cadena: "contacto" NO debe coincidir con "contactor"),
     # pero solo si el mensaje es corto (evitar falsos positivos)
     if len(texto_normalizado.split()) <= 5:
         for p in patrones:
-            if p in texto_normalizado:
+            if re.search(rf"\b{re.escape(p)}\b", texto_normalizado):
                 return True
     return False
 
@@ -239,9 +247,10 @@ def intentar_respuesta_rapida(mensaje: str, historial: list[dict]) -> str | None
     if _coincide(norm, _PATRONES_GRACIAS):
         return _GRACIAS
 
-    # Contacto / vendedores
-    if _coincide(norm, _PATRONES_CONTACTO):
-        return _CONTACTO
+    # Contacto / vendedores (si el mensaje habla de un producto, que lo maneje la IA)
+    pide_contacto = any(re.search(rf"\b{re.escape(p)}\b", norm) for p in _PATRONES_CONTACTO)
+    if pide_contacto and not _es_relevante(norm):
+        return CONTACTO
 
     # ── Filtro de relevancia (Capa 1) ────────────────────────────────────────
     # Si el mensaje no tiene palabras del dominio electrico, responder sin API.

@@ -27,7 +27,7 @@ negocio:
     - "Despachos a nivel nacional"
 
 agente:
-  nombre: null
+  nombre: "Chispa"  # se toma de AGENTE_NOMBRE en .env
   tono: "neutral, directo y servicial"
   disponibilidad: "24/7"
   casos_de_uso:

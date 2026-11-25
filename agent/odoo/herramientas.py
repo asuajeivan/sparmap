@@ -95,7 +95,20 @@ def buscar_producto(nombre: str) -> dict:
     ]
 
     if not productos:
-        return {"exito": True, "datos": [], "mensaje": f"No tenemos '{nombre}' disponible."}
+        # Distinguir "agotado" (lo manejamos pero no hay stock) de "no lo manejamos"
+        dominio_agotado = [["active", "=", True], ["sale_ok", "=", True]]
+        for palabra in palabras:
+            dominio_agotado.append(["name", "ilike", palabra])
+        existe = _odoo.llamar("product.product", "search_count", [dominio_agotado]) or 0
+        if existe:
+            return {
+                "exito": True, "datos": [], "agotado": True,
+                "mensaje": f"'{nombre}' se agoto (ya se vendio). Avisa al equipo de ventas.",
+            }
+        return {
+            "exito": True, "datos": [], "agotado": False,
+            "mensaje": f"No manejamos '{nombre}' en inventario. Avisa al equipo de ventas.",
+        }
     return {"exito": True, "datos": productos}
 
 

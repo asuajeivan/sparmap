@@ -18,7 +18,8 @@ from apscheduler.triggers.cron import CronTrigger
 
 from agent.memory import inicializar_db, guardar_mensaje, obtener_historial
 from agent.providers import obtener_proveedor
-from agent.respuestas_rapidas import intentar_respuesta_rapida
+from agent.respuestas_rapidas import intentar_respuesta_rapida, CONTACTO
+from agent.escalamiento import NOMBRE_AGENTE, PRESENTACION, notificar_equipo_ventas
 from agent.transcripcion import transcribir_audio
 
 # Seleccionar el cerebro según AI_PROVIDER y ODOO_ENABLED
@@ -186,8 +187,21 @@ async def webhook_handler(request: Request):
             respuesta = intentar_respuesta_rapida(msg.texto, historial)
             if respuesta:
                 logger.info(f"Respuesta rapida (sin API) a {msg.telefono}")
+                # El cliente pidio un vendedor → avisar al equipo, no solo dar los numeros
+                if respuesta == CONTACTO:
+                    await notificar_equipo_ventas(
+                        msg.telefono, msg.texto, "pide hablar con un vendedor"
+                    )
             else:
                 respuesta = await generar_respuesta(msg.texto, historial, telefono=msg.telefono)
+
+            # Primer contacto: el cliente siempre debe saber que habla con un agente virtual
+            if not historial:
+                if isinstance(respuesta, dict):
+                    if NOMBRE_AGENTE not in respuesta.get("texto", ""):
+                        respuesta["texto"] = f"{PRESENTACION}\n\n{respuesta.get('texto', '')}"
+                elif NOMBRE_AGENTE not in respuesta:
+                    respuesta = f"{PRESENTACION}\n\n{respuesta}"
 
             # Manejar respuesta con PDF (cotizacion)
             if isinstance(respuesta, dict):

@@ -45,6 +45,8 @@ def _cargar_config_prompts() -> dict:
 def _cargar_system_prompt() -> str:
     config = _cargar_config_prompts()
     base = config.get("system_prompt", "Eres un asistente útil. Responde en español.")
+    from agent.escalamiento import NOMBRE_AGENTE
+    base = base.replace("{{AGENTE}}", NOMBRE_AGENTE)
 
     if ODOO_ENABLED:
         base += "\nTienes acceso al inventario de Odoo. Usa buscar_producto para productos especificos, obtener_catalogo para listas por categoria."
@@ -153,7 +155,8 @@ async def generar_respuesta(mensaje: str, historial: list[dict], telefono: str =
     herramientas_gemini = []
     if ODOO_ENABLED:
         from agent.odoo.herramientas import HERRAMIENTAS_CLAUDE
-        herramientas_gemini = _convertir_herramientas_a_gemini(HERRAMIENTAS_CLAUDE)
+        from agent.escalamiento import HERRAMIENTA_NOTIFICAR
+        herramientas_gemini = _convertir_herramientas_a_gemini(HERRAMIENTAS_CLAUDE + [HERRAMIENTA_NOTIFICAR])
 
     try:
         respuesta = await _llamar_gemini(contenidos, herramientas_gemini, telefono)
@@ -228,8 +231,17 @@ async def _llamar_gemini(
 
             logger.info(f"Ejecutando herramienta: {nombre}({json.dumps(argumentos, ensure_ascii=False)})")
 
-            from agent.odoo.herramientas import ejecutar_herramienta
-            resultado = ejecutar_herramienta(nombre, argumentos)
+            if nombre == "notificar_equipo_ventas":
+                from agent.escalamiento import notificar_equipo_ventas
+                resultado = await notificar_equipo_ventas(
+                    telefono or "",
+                    argumentos.get("consulta", ""),
+                    argumentos.get("motivo", ""),
+                    argumentos.get("cliente_nombre", ""),
+                )
+            else:
+                from agent.odoo.herramientas import ejecutar_herramienta
+                resultado = ejecutar_herramienta(nombre, argumentos)
 
             logger.info(f"Resultado {nombre}: exito={resultado.get('exito')}")
 
